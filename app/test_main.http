@@ -1,0 +1,85 @@
+# Test your FastAPI endpoints
+
+GET http://127.0.0.1:8000/
+Accept: application/json
+
+###
+
+GET http://127.0.0.1:8000/health
+Accept: application/json
+
+###
+
+# --- Auth bootstrap (dev) ---
+
+# Para bootstrap inicial: setear en docker-compose o en el entorno:
+# BOOTSTRAP_SUPERADMIN_USERNAME=admin
+# BOOTSTRAP_SUPERADMIN_PASSWORD=admin123
+
+# Login (OAuth2 password flow). This returns an access_token (JWT).
+POST http://127.0.0.1:8000/auth/token
+Content-Type: application/x-www-form-urlencoded
+
+username=admin&password=admin123
+
+###
+
+# Replace {{TOKEN}} with the access_token value from /auth/token.
+GET http://127.0.0.1:8000/auth/me
+Authorization: Bearer {{TOKEN}}
+
+###
+
+POST http://127.0.0.1:8000/usuarios/roles
+Content-Type: application/json
+Authorization: Bearer {{TOKEN}}
+
+{
+  "nombre": "operador_custom",
+  "permissions": [
+    "users:read"
+  ]
+}
+
+###
+
+POST http://127.0.0.1:8000/usuarios/
+Content-Type: application/json
+Authorization: Bearer {{TOKEN}}
+
+{
+  "username": "demo",
+  "email": "demo@example.com",
+  "nombre": "Demo",
+  "apellido": "Usuario",
+  "rol_id": {{ROL_ID}},
+  "password": "demo123"
+}
+
+###
+
+GET http://127.0.0.1:8000/usuarios/{{USER_ID}}
+Authorization: Bearer {{TOKEN}}
+
+###
+
+POST http://127.0.0.1:8000/videoseguridad/eventos/robo
+Content-Type: application/json
+Authorization: Bearer {{TOKEN}}
+
+{
+  "descripcion": "Evento creado con usuario autenticado",
+  "fuente": "manual",
+  "estado": "abierto",
+  "fecha_ocurrencia": null,
+  "latitud": -36.7,
+  "longitud": -59.1,
+  "servicio_actuante": "policia",
+  "camara": "camara 1"
+}
+
+###
+
+# Solo superadmin: borrado lógico (setea activo=false, no elimina fila)
+DELETE http://127.0.0.1:8000/usuarios/{{USER_ID}}
+Authorization: Bearer {{TOKEN}}
