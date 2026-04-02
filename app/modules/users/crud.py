@@ -114,6 +114,40 @@ def eliminar_rol(db: Session, *, rol_id: int) -> bool:
     return True
 
 
+def actualizar_roles_usuario(db: Session, *, usuario_id: int, rol_ids: list[int]) -> Usuario | None:
+    usuario = db.query(Usuario).filter(Usuario.id == usuario_id).first()
+    if not usuario:
+        return None
+
+    roles = db.query(Rol).filter(Rol.id.in_(rol_ids)).all()
+    found_ids = {r.id for r in roles}
+    missing_ids = sorted(set(rol_ids) - found_ids)
+    if missing_ids:
+        raise ValueError(f"rol_ids invalidos: {', '.join(map(str, missing_ids))}")
+
+    current_has_admin_dios = any(r.nombre == "adminDios" for r in usuario.roles)
+    target_has_admin_dios = any(r.nombre == "adminDios" for r in roles)
+
+    if target_has_admin_dios and not current_has_admin_dios:
+        existing_admin_dios = (
+            db.query(Usuario.id)
+            .join(Usuario.roles)
+            .filter(Rol.nombre == "adminDios", Usuario.id != usuario.id)
+            .first()
+        )
+        if existing_admin_dios:
+            raise ValueError("solo puede existir un usuario con rol adminDios")
+
+    if current_has_admin_dios and not target_has_admin_dios:
+        raise ValueError("no se puede quitar el rol adminDios al usuario adminDios")
+
+    usuario.roles = roles
+    db.add(usuario)
+    db.commit()
+    db.refresh(usuario)
+    return usuario
+
+
 def obtener_usuario_por_username(db: Session, username: str) -> Usuario | None:
     return db.query(Usuario).filter(Usuario.username == username).first()
 

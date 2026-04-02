@@ -57,6 +57,18 @@ class UsuarioCreate(RequestModel):
         return ids
 
 
+class UsuarioRolesUpdate(RequestModel):
+    rol_ids: list[int]
+
+    @field_validator("rol_ids")
+    @classmethod
+    def validar_rol_ids(cls, value: list[int]) -> list[int]:
+        ids = list(dict.fromkeys(value))
+        if not ids:
+            raise ValueError("rol_ids debe tener al menos un rol")
+        return ids
+
+
 class UsuarioResponse(ResponseModel):
     id: int
     username: str

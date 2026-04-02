@@ -63,6 +63,16 @@ Authorization: Bearer {{TOKEN}}
 
 ###
 
+PATCH http://127.0.0.1:8000/usuarios/{{USER_ID}}/roles
+Content-Type: application/json
+Authorization: Bearer {{TOKEN}}
+
+{
+  "rol_ids": [{{ROL_ID}}]
+}
+
+###
+
 POST http://127.0.0.1:8000/videoseguridad/eventos/robo
 Content-Type: application/json
 Authorization: Bearer {{TOKEN}}
