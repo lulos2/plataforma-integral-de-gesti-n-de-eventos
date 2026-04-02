@@ -10,6 +10,7 @@ from app.modules.users import crud as users_crud
 from app.modules.users.models import Usuario
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/token")
+ADMIN_DIOS_ROLE_NAME = "adminDios"
 
 
 def get_current_user(
@@ -30,26 +31,32 @@ def get_current_user(
     return usuario
 
 
-def require_superuser(usuario: Usuario = Depends(get_current_user)) -> Usuario:
-    if not usuario.is_superuser:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Requiere superadmin")
+def _is_admin_dios(usuario: Usuario) -> bool:
+    roles = getattr(usuario, "roles", None) or []
+    return any(getattr(rol, "nombre", None) == ADMIN_DIOS_ROLE_NAME for rol in roles)
+
+
+def require_admin_dios(usuario: Usuario = Depends(get_current_user)) -> Usuario:
+    if not _is_admin_dios(usuario):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Requiere rol adminDios")
     return usuario
 
 
 def _user_permission_codes(usuario: Usuario) -> set[str]:
-    if usuario.is_superuser:
-        # Superuser bypass.
+    if _is_admin_dios(usuario):
+        # adminDios bypass.
         return {"*"}
-    rol = getattr(usuario, "rol", None)
-    if not rol:
-        return set()
-    perms = getattr(rol, "permissions", None) or []
-    return {p.code for p in perms if getattr(p, "code", None)}
+    roles = getattr(usuario, "roles", None) or []
+    codes: set[str] = set()
+    for rol in roles:
+        perms = getattr(rol, "permissions", None) or []
+        codes.update({p.code for p in perms if getattr(p, "code", None)})
+    return codes
 
 
 def require_permissions(*required: str):
     """
-    Dependency factory. Requires ALL permissions unless user is superuser.
+    Dependency factory. Requires ALL permissions unless user has adminDios role.
     """
 
     def _dep(usuario: Usuario = Depends(get_current_user)) -> Usuario:

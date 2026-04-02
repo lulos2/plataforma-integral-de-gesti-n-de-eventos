@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
-from app.core.deps import require_permissions, require_superuser
+from app.core.deps import require_admin_dios, require_permissions
 from app.database.session import get_db
 from app.modules.users import crud
 from app.modules.users.schemas import (
@@ -19,9 +19,27 @@ router = APIRouter(prefix="/usuarios", tags=["Usuarios"])
 def crear_rol(
     data: RolCreate,
     db: Session = Depends(get_db),
-    _actor=Depends(require_superuser),
+    _actor=Depends(require_admin_dios),
 ):
-    return crud.crear_rol(db, data)
+    try:
+        return crud.crear_rol(db, data)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.delete("/roles/{rol_id}")
+def eliminar_rol(
+    rol_id: int,
+    db: Session = Depends(get_db),
+    _actor=Depends(require_admin_dios),
+):
+    try:
+        eliminado = crud.eliminar_rol(db, rol_id=rol_id)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    if not eliminado:
+        raise HTTPException(status_code=404, detail="Rol no encontrado")
+    return {"detail": "Rol eliminado"}
 
 
 @router.get("/roles", response_model=list[RolResponse])
@@ -36,7 +54,7 @@ def listar_roles(
 def crear_usuario(
     data: UsuarioCreate,
     db: Session = Depends(get_db),
-    _actor=Depends(require_permissions("users:write")),
+    _actor=Depends(require_admin_dios),
 ):
     try:
         return crud.crear_usuario(db, data)
@@ -68,7 +86,7 @@ def obtener_usuario(
 def eliminar_usuario(
     usuario_id: int,
     db: Session = Depends(get_db),
-    _actor=Depends(require_superuser),
+    _actor=Depends(require_admin_dios),
 ):
     try:
         eliminado = crud.eliminar_usuario(db, usuario_id=usuario_id)

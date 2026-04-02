@@ -37,7 +37,7 @@ class UsuarioCreate(RequestModel):
     email: str
     nombre: str
     apellido: str
-    rol_id: int
+    rol_ids: list[int]
     password: str
 
     @field_validator("email")
@@ -48,6 +48,14 @@ class UsuarioCreate(RequestModel):
             raise ValueError("email invalido")
         return email
 
+    @field_validator("rol_ids")
+    @classmethod
+    def validar_rol_ids(cls, value: list[int]) -> list[int]:
+        ids = list(dict.fromkeys(value))
+        if not ids:
+            raise ValueError("rol_ids debe tener al menos un rol")
+        return ids
+
 
 class UsuarioResponse(ResponseModel):
     id: int
@@ -55,7 +63,6 @@ class UsuarioResponse(ResponseModel):
     email: str | None = None
     nombre: str | None = None
     apellido: str | None = None
-    rol_id: int
+    roles: list[RolResponse] = []
     activo: bool
-    is_superuser: bool
     fecha_creacion: datetime

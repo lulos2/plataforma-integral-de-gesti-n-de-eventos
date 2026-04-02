@@ -7,13 +7,17 @@ from app.modules.users.permissions import PermissionCode
 
 
 def crear_rol(db: Session, data: RolCreate) -> Rol:
-    reserved = {"superadmin", "admin", "operador", "auditor"}
+    reserved = {"adminDios", "superadmin", "admin", "operador", "auditor"}
     if data.nombre in reserved:
         raise ValueError(f"rol reservado: {data.nombre}")
 
     unknown = sorted({p for p in data.permissions if p not in {c.value for c in PermissionCode}})
     if unknown:
         raise ValueError(f"permisos invalidos: {', '.join(unknown)}")
+    if data.permissions:
+        all_permission_codes = {row[0] for row in db.query(Permission.code).all()}
+        if all_permission_codes and set(data.permissions) == all_permission_codes:
+            raise ValueError("no se puede crear otro rol con todos los permisos")
 
     rol = Rol(nombre=data.nombre)
     if data.permissions:
@@ -40,18 +44,31 @@ def listar_roles(db: Session) -> list[Rol]:
 
 
 def crear_usuario(db: Session, data: UsuarioCreate) -> Usuario:
-    rol = db.query(Rol).filter(Rol.id == data.rol_id).first()
-    if not rol:
-        raise ValueError("rol_id invalido")
+    roles = db.query(Rol).filter(Rol.id.in_(data.rol_ids)).all()
+    found_ids = {r.id for r in roles}
+    missing_ids = sorted(set(data.rol_ids) - found_ids)
+    if missing_ids:
+        raise ValueError(f"rol_ids invalidos: {', '.join(map(str, missing_ids))}")
+
+    selected_admin_dios = any(r.nombre == "adminDios" for r in roles)
+    if selected_admin_dios:
+        existing_admin_dios = (
+            db.query(Usuario.id)
+            .join(Usuario.roles)
+            .filter(Rol.nombre == "adminDios")
+            .first()
+        )
+        if existing_admin_dios:
+            raise ValueError("solo puede existir un usuario con rol adminDios")
 
     usuario = Usuario(
         username=data.username,
         email=str(data.email),
         nombre=data.nombre,
         apellido=data.apellido,
-        rol_id=data.rol_id,
         password_hash=get_password_hash(data.password),
     )
+    usuario.roles = roles
     db.add(usuario)
     db.commit()
     db.refresh(usuario)
@@ -67,8 +84,9 @@ def eliminar_usuario(db: Session, *, usuario_id: int) -> Usuario | None:
     if not usuario:
         return None
 
-    if usuario.is_superuser:
-        raise ValueError("no se puede eliminar un superadmin")
+    role_names = {r.nombre for r in (getattr(usuario, "roles", None) or [])}
+    if "adminDios" in role_names:
+        raise ValueError("no se puede eliminar un usuario con rol adminDios")
 
     if not usuario.activo:
         return usuario
@@ -78,6 +96,22 @@ def eliminar_usuario(db: Session, *, usuario_id: int) -> Usuario | None:
     db.commit()
     db.refresh(usuario)
     return usuario
+
+
+def eliminar_rol(db: Session, *, rol_id: int) -> bool:
+    rol = db.query(Rol).filter(Rol.id == rol_id).first()
+    if not rol:
+        return False
+    if rol.nombre == "adminDios":
+        raise ValueError("no se puede eliminar el rol adminDios")
+
+    has_users = db.query(Usuario.id).join(Usuario.roles).filter(Rol.id == rol.id).first()
+    if has_users:
+        raise ValueError("no se puede eliminar un rol asignado a usuarios")
+
+    db.delete(rol)
+    db.commit()
+    return True
 
 
 def obtener_usuario_por_username(db: Session, username: str) -> Usuario | None:

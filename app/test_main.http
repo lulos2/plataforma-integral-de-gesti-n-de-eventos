@@ -52,7 +52,7 @@ Authorization: Bearer {{TOKEN}}
   "email": "demo@example.com",
   "nombre": "Demo",
   "apellido": "Usuario",
-  "rol_id": {{ROL_ID}},
+  "rol_ids": [{{ROL_ID}}],
   "password": "demo123"
 }
 
@@ -80,6 +80,6 @@ Authorization: Bearer {{TOKEN}}
 
 ###
 
-# Solo superadmin: borrado lógico (setea activo=false, no elimina fila)
+# Solo adminDios: borrado lógico (setea activo=false, no elimina fila)
 DELETE http://127.0.0.1:8000/usuarios/{{USER_ID}}
 Authorization: Bearer {{TOKEN}}
