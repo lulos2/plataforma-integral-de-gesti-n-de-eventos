@@ -43,6 +43,10 @@ def listar_roles(db: Session) -> list[Rol]:
     return db.query(Rol).order_by(Rol.nombre.asc()).all()
 
 
+def listar_permisos(db: Session) -> list[Permission]:
+    return db.query(Permission).order_by(Permission.code.asc()).all()
+
+
 def crear_usuario(db: Session, data: UsuarioCreate) -> Usuario:
     roles = db.query(Rol).filter(Rol.id.in_(data.rol_ids)).all()
     found_ids = {r.id for r in roles}

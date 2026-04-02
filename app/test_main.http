@@ -43,6 +43,11 @@ Authorization: Bearer {{TOKEN}}
 
 ###
 
+GET http://127.0.0.1:8000/usuarios/permisos
+Authorization: Bearer {{TOKEN}}
+
+###
+
 POST http://127.0.0.1:8000/usuarios/
 Content-Type: application/json
 Authorization: Bearer {{TOKEN}}

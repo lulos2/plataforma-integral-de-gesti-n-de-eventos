@@ -5,6 +5,7 @@ from app.core.deps import require_admin_dios, require_permissions
 from app.database.session import get_db
 from app.modules.users import crud
 from app.modules.users.schemas import (
+    PermissionResponse,
     RolCreate,
     RolResponse,
     UsuarioCreate,
@@ -49,6 +50,14 @@ def listar_roles(
     _actor=Depends(require_permissions("roles:read")),
 ):
     return crud.listar_roles(db)
+
+
+@router.get("/permisos", response_model=list[PermissionResponse])
+def listar_permisos(
+    db: Session = Depends(get_db),
+    _actor=Depends(require_permissions("roles:read")),
+):
+    return crud.listar_permisos(db)
 
 
 @router.post("/", response_model=UsuarioResponse)
