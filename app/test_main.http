@@ -48,6 +48,33 @@ Authorization: Bearer {{TOKEN}}
 
 ###
 
+POST http://127.0.0.1:8000/poligonos/
+Content-Type: application/json
+Authorization: Bearer {{TOKEN}}
+
+{
+  "nombre": "Zona Centro",
+  "descripcion": "Poligono de prueba para mapa de calor",
+  "puntos": [
+    {"latitud": -36.7600, "longitud": -59.0800},
+    {"latitud": -36.7600, "longitud": -59.0500},
+    {"latitud": -36.7300, "longitud": -59.0500},
+    {"latitud": -36.7300, "longitud": -59.0800}
+  ]
+}
+
+###
+
+GET http://127.0.0.1:8000/poligonos/
+Authorization: Bearer {{TOKEN}}
+
+###
+
+GET http://127.0.0.1:8000/poligonos/{{POLIGONO_ID}}/eventos?area=videoseguridad&fecha_desde=2026-01-01T00:00:00Z
+Authorization: Bearer {{TOKEN}}
+
+###
+
 POST http://127.0.0.1:8000/usuarios/
 Content-Type: application/json
 Authorization: Bearer {{TOKEN}}

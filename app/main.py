@@ -59,6 +59,7 @@ async def lifespan(_: FastAPI):
         if engine.dialect.name == "postgresql":
             db.execute(text("ALTER TABLE usuarios DROP COLUMN IF EXISTS is_superuser"))
             db.execute(text("ALTER TABLE usuarios DROP COLUMN IF EXISTS rol_id CASCADE"))
+            db.execute(text("ALTER TABLE poligonos DROP COLUMN IF EXISTS color_hex"))
             db.commit()
     finally:
         db.close()

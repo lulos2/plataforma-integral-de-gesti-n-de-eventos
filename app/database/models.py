@@ -24,3 +24,5 @@ from app.modules.events.models_domain import (  # noqa: F401
     ServicioActuante,
 )
 
+# Polygons
+from app.modules.poligonos.models import Poligono  # noqa: F401
