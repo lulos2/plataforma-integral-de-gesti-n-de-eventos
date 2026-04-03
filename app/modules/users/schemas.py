@@ -3,13 +3,15 @@ import re
 
 from pydantic import BaseModel, ConfigDict, field_validator
 
+from app.core.serialization import ArgentinaResponseModel
+
 
 class RequestModel(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
 
-class ResponseModel(BaseModel):
-    model_config = ConfigDict(from_attributes=True)
+class ResponseModel(ArgentinaResponseModel):
+    pass
 
 
 EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")

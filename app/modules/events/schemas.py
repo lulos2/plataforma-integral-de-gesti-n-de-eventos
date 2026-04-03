@@ -1,15 +1,16 @@
 from pydantic import BaseModel, ConfigDict
 from datetime import datetime
 
+from app.core.serialization import ArgentinaResponseModel
+
 
 class RequestModel(BaseModel):
     # Reject unknown fields in incoming requests (e.g. "id" on POST).
     model_config = ConfigDict(extra="forbid")
 
 
-class ResponseModel(BaseModel):
-    # Allow reading ORM objects directly.
-    model_config = ConfigDict(from_attributes=True)
+class ResponseModel(ArgentinaResponseModel):
+    pass
 
 
 class TipoEventoBase(RequestModel):
@@ -77,7 +78,7 @@ class EventoUpdate(RequestModel):
     # actor (auditoría real) se toma del usuario autenticado
 
 
-class EventoResponse(BaseModel):
+class EventoResponse(ResponseModel):
     id: int
     area: str
     tipo_evento: str

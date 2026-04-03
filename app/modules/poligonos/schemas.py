@@ -4,13 +4,15 @@ from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict, field_validator
 
+from app.core.serialization import ArgentinaResponseModel
+
 
 class RequestModel(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
 
-class ResponseModel(BaseModel):
-    model_config = ConfigDict(from_attributes=True)
+class ResponseModel(ArgentinaResponseModel):
+    pass
 
 
 class Punto(RequestModel):
