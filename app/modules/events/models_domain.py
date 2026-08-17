@@ -88,7 +88,11 @@ class EventoVideoseguridad(Base):
     # Opcional: una camara asociada (si el evento proviene de una o se vincula a una)
     camara_id = Column(Integer, ForeignKey("camaras.id"), nullable=True, index=True)
 
-    prioridad = Column(Integer, nullable=True, index=True)  # 1 alta, 2 media, 3 baja, etc.
+    prioridad = Column(String, nullable=True, index=True)  # alta | media | baja
+
+    movil_comisionado = Column(String, nullable=True)
+    supervisor_nombre = Column(String, nullable=True)
+    observaciones = Column(Text, nullable=True)
 
     evento = relationship("Evento")
     servicio_actuante = relationship("ServicioActuante")
@@ -105,6 +109,7 @@ class EventoZoonosis(Base):
     )
 
     especie = Column(String, nullable=True)  # perro, gato, roedor, etc.
+    propietario = Column(String, nullable=True)
     observaciones = Column(Text, nullable=True)
     requiere_control_antirrabico = Column(Boolean, nullable=True)
 
@@ -157,6 +162,7 @@ class EventoIntervencion(Base):
     cerrado_en = Column(DateTime(timezone=True), nullable=True, index=True)
 
     notas = Column(Text, nullable=True)
+    resultado = Column(Text, nullable=True)
     extra = Column(JSONB, nullable=True)
 
     fecha_creacion = Column(DateTime(timezone=True), server_default=func.now(), index=True)

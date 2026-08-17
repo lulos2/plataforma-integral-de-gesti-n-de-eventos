@@ -9,6 +9,7 @@ from app.modules.events.presenter import to_evento_response
 from .schemas import (
     EventoResponse,
     EventoUpdate,
+    EventoCreate,
     IntervencionCreate,
     IntervencionResponse,
     TipoEventoResponse,
@@ -27,6 +28,7 @@ def listar_eventos(
     area: str | None = None,
     tipo_evento_id: int | None = None,
     servicio_actuante_id: int | None = None,
+    estado: str | None = None,
     fecha_desde: datetime | None = Query(default=None),
     fecha_hasta: datetime | None = Query(default=None),
 ):
@@ -36,10 +38,39 @@ def listar_eventos(
         area=area,
         tipo_evento_id=tipo_evento_id,
         servicio_actuante_id=servicio_actuante_id,
+        estado=estado,
         fecha_desde=fecha_desde,
         fecha_hasta=fecha_hasta,
     )
     return [to_evento_response(e) for e in eventos]
+
+@router.post("/", response_model=EventoResponse)
+def crear_evento(
+    data: EventoCreate,
+    db: Session = Depends(get_db),
+    usuario=Depends(get_current_user),
+):
+    try:
+        evento, _ = crud.crear_evento_base(
+            db,
+            tipo_evento_id=data.tipo_evento_id,
+            data=data,
+            actor_usuario_id=usuario.id,
+        )
+        db.commit()
+        db.refresh(evento)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    return to_evento_response(crud.obtener_evento(db, evento.id))
+
+
+@router.get("/tipos", response_model=list[TipoEventoResponse])
+def listar_tipos_evento(
+    db: Session = Depends(get_db),
+    area: str | None = None,
+):
+    return crud.listar_tipos_evento(db, area=area)
 
 
 @router.get("/{evento_id}", response_model=EventoResponse)
@@ -112,11 +143,3 @@ def listar_intervenciones(
     db: Session = Depends(get_db),
 ):
     return crud.listar_intervenciones(db, evento_id=evento_id)
-
-
-@router.get("/tipos", response_model=list[TipoEventoResponse])
-def listar_tipos_evento(
-    db: Session = Depends(get_db),
-    area: str | None = None,
-):
-    return crud.listar_tipos_evento(db, area=area)

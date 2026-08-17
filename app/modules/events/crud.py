@@ -19,6 +19,11 @@ class _EventoBaseData(Protocol):
     fecha_ocurrencia: datetime | None
     latitud: float
     longitud: float
+    turno: str | None
+    direccion: str | None
+    origen: str | None
+    recibio_nombre: str | None
+    recibio_funcion: str | None
 
 
 def _crear_audit(db: Session, *, evento_id: int, actor_usuario_id: int, accion: str, detalle: dict | None = None):
@@ -67,6 +72,11 @@ def crear_evento_base(
         latitud=data.latitud,
         longitud=data.longitud,
         ubicacion=point,
+        turno=data.turno,
+        direccion=data.direccion,
+        origen=data.origen,
+        recibio_nombre=data.recibio_nombre,
+        recibio_funcion=data.recibio_funcion,
         usuario_id=actor_usuario_id,
     )
 
@@ -81,11 +91,16 @@ def obtener_eventos(
     area: str | None = None,
     tipo_evento_id: int | None = None,
     servicio_actuante_id: int | None = None,
+    estado: str | None = None,
     fecha_desde: datetime | None = None,
     fecha_hasta: datetime | None = None,
 ):
 
-    q = db.query(Evento).options(joinedload(Evento.tipo_evento))
+    q = db.query(Evento).options(
+        joinedload(Evento.tipo_evento),
+        joinedload(Evento.videoseguridad).joinedload(EventoVideoseguridad.servicio_actuante),
+        joinedload(Evento.videoseguridad).joinedload(EventoVideoseguridad.camara),
+    )
 
     if area:
         q = q.join(Evento.tipo_evento).filter(TipoEvento.area == area)
@@ -97,6 +112,9 @@ def obtener_eventos(
         q = q.join(EventoVideoseguridad, EventoVideoseguridad.evento_id == Evento.id).filter(
             EventoVideoseguridad.servicio_actuante_id == servicio_actuante_id
         )
+
+    if estado:
+        q = q.filter(Evento.estado == estado)
 
     if fecha_desde:
         q = q.filter(Evento.fecha_ocurrencia >= fecha_desde)
@@ -111,7 +129,11 @@ def obtener_evento(db: Session, evento_id: int) -> Evento | None:
 
     return (
         db.query(Evento)
-        .options(joinedload(Evento.tipo_evento))
+        .options(
+            joinedload(Evento.tipo_evento),
+            joinedload(Evento.videoseguridad).joinedload(EventoVideoseguridad.servicio_actuante),
+            joinedload(Evento.videoseguridad).joinedload(EventoVideoseguridad.camara),
+        )
         .filter(Evento.id == evento_id)
         .first()
     )
@@ -134,6 +156,7 @@ def crear_intervencion(db: Session, *, evento_id: int, data):
         arribo_en=data.arribo_en,
         cerrado_en=data.cerrado_en,
         notas=data.notas,
+        resultado=data.resultado,
         extra=data.extra,
     )
     db.add(intervencion)
@@ -159,7 +182,17 @@ def actualizar_evento(db: Session, evento_id: int, data, *, actor_usuario_id: in
 
     detalle = {}
 
-    for campo in ("descripcion", "fuente", "estado", "fecha_ocurrencia"):
+    for campo in (
+        "descripcion",
+        "fuente",
+        "estado",
+        "fecha_ocurrencia",
+        "turno",
+        "direccion",
+        "origen",
+        "recibio_nombre",
+        "recibio_funcion",
+    ):
         nuevo = getattr(data, campo)
         if nuevo is not None and nuevo != getattr(evento, campo):
             detalle[campo] = {"from": getattr(evento, campo), "to": nuevo}

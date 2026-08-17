@@ -1,4 +1,4 @@
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, field_validator
 from datetime import datetime
 
 from app.core.serialization import ArgentinaResponseModel
@@ -11,6 +11,18 @@ class RequestModel(BaseModel):
 
 class ResponseModel(ArgentinaResponseModel):
     pass
+
+
+ORIGENES_VALIDOS = {"ojos_en_alerta", "linea_103", "monitoreo_propio", "fuerzas_seguridad"}
+
+
+def _validar_origen(value: str | None) -> str | None:
+    if value is None:
+        return value
+    origen = value.strip().lower()
+    if origen not in ORIGENES_VALIDOS:
+        raise ValueError(f"origen invalido. Valores: {', '.join(sorted(ORIGENES_VALIDOS))}")
+    return origen
 
 
 class TipoEventoBase(RequestModel):
@@ -30,6 +42,16 @@ class EventoBase(RequestModel):
     fecha_ocurrencia: datetime | None = None
     latitud: float
     longitud: float
+    turno: str | None = None
+    direccion: str | None = None
+    origen: str | None = None
+    recibio_nombre: str | None = None
+    recibio_funcion: str | None = None
+
+    @field_validator("origen")
+    @classmethod
+    def _check_origen(cls, value: str | None) -> str | None:
+        return _validar_origen(value)
 
 
 class EventoCommonCreate(RequestModel):
@@ -39,6 +61,16 @@ class EventoCommonCreate(RequestModel):
     fecha_ocurrencia: datetime | None = None
     latitud: float
     longitud: float
+    turno: str | None = None
+    direccion: str | None = None
+    origen: str | None = None
+    recibio_nombre: str | None = None
+    recibio_funcion: str | None = None
+
+    @field_validator("origen")
+    @classmethod
+    def _check_origen(cls, value: str | None) -> str | None:
+        return _validar_origen(value)
 
 
 class EventoCreate(EventoBase):
@@ -52,6 +84,7 @@ class IntervencionCreate(RequestModel):
     arribo_en: datetime | None = None
     cerrado_en: datetime | None = None
     notas: str | None = None
+    resultado: str | None = None
     extra: dict | None = None
 
 
@@ -64,6 +97,7 @@ class IntervencionResponse(ResponseModel):
     arribo_en: datetime | None = None
     cerrado_en: datetime | None = None
     notas: str | None = None
+    resultado: str | None = None
     extra: dict | None = None
     fecha_creacion: datetime
 
@@ -75,7 +109,17 @@ class EventoUpdate(RequestModel):
     fecha_ocurrencia: datetime | None = None
     latitud: float | None = None
     longitud: float | None = None
+    turno: str | None = None
+    direccion: str | None = None
+    origen: str | None = None
+    recibio_nombre: str | None = None
+    recibio_funcion: str | None = None
     # actor (auditoría real) se toma del usuario autenticado
+
+    @field_validator("origen")
+    @classmethod
+    def _check_origen(cls, value: str | None) -> str | None:
+        return _validar_origen(value)
 
 
 class EventoResponse(ResponseModel):
@@ -93,4 +137,20 @@ class EventoResponse(ResponseModel):
 
     latitud: float
     longitud: float
+    turno: str | None = None
+    direccion: str | None = None
+    origen: str | None = None
+    numero_evento: int
+    recibio_nombre: str | None = None
+    recibio_funcion: str | None = None
     usuario_id: int
+
+    # Datos propios del Centro de Monitoreo (solo presentes si area == "videoseguridad")
+    servicio_actuante: str | None = None
+    servicio_actuante_id: int | None = None
+    camara: str | None = None
+    camara_id: int | None = None
+    prioridad: str | None = None
+    movil_comisionado: str | None = None
+    supervisor_nombre: str | None = None
+    observaciones: str | None = None

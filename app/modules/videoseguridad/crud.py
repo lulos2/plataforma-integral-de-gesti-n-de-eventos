@@ -7,7 +7,7 @@ from sqlalchemy.sql import func
 
 from app.modules.events import crud as events_crud
 from app.modules.events.models_domain import EventoVideoseguridad, ServicioActuante, Camara
-from app.modules.videoseguridad.schemas import EventoVideoseguridadCreate
+from app.modules.videoseguridad.schemas import EventoVideoseguridadCreate, EventoVideoseguridadUpdate
 
 
 _CAMARA_RE = re.compile(r"^\s*camara\s+(\d+)\s*$", flags=re.IGNORECASE)
@@ -117,6 +117,9 @@ def crear_evento_videoseguridad(
                 servicio_actuante_id=resolved_servicio_actuante_id,
                 camara_id=resolved_camara_id,
                 prioridad=data.prioridad,
+                movil_comisionado=data.movil_comisionado,
+                supervisor_nombre=data.supervisor_nombre,
+                observaciones=data.observaciones,
             )
         )
         events_crud._crear_audit(db, evento_id=evento.id, actor_usuario_id=actor_usuario_id, accion="create")
@@ -127,3 +130,49 @@ def crear_evento_videoseguridad(
 
     db.refresh(evento)
     return evento
+
+
+def actualizar_evento_videoseguridad(
+    db: Session,
+    *,
+    evento_id: int,
+    data: EventoVideoseguridadUpdate,
+    actor_usuario_id: int,
+):
+    registro = db.query(EventoVideoseguridad).filter(EventoVideoseguridad.evento_id == evento_id).first()
+    if not registro:
+        return None
+
+    detalle: dict = {}
+
+    if data.servicio_actuante_id is not None or (data.servicio_actuante or "").strip() != "":
+        nuevo_servicio_id = _resolve_servicio_actuante_id(
+            db,
+            servicio_actuante_id=data.servicio_actuante_id,
+            servicio_actuante=data.servicio_actuante,
+        )
+        if nuevo_servicio_id != registro.servicio_actuante_id:
+            detalle["servicio_actuante_id"] = {"from": registro.servicio_actuante_id, "to": nuevo_servicio_id}
+            registro.servicio_actuante_id = nuevo_servicio_id
+
+    if data.camara_id is not None or (data.camara or "").strip() != "":
+        nueva_camara_id = _resolve_camara_id(db, camara_id=data.camara_id, camara=data.camara)
+        if nueva_camara_id != registro.camara_id:
+            detalle["camara_id"] = {"from": registro.camara_id, "to": nueva_camara_id}
+            registro.camara_id = nueva_camara_id
+
+    for campo in ("prioridad", "movil_comisionado", "supervisor_nombre", "observaciones"):
+        nuevo = getattr(data, campo)
+        if nuevo is not None and nuevo != getattr(registro, campo):
+            detalle[campo] = {"from": getattr(registro, campo), "to": nuevo}
+            setattr(registro, campo, nuevo)
+
+    db.add(registro)
+    db.commit()
+    db.refresh(registro)
+
+    if detalle:
+        events_crud._crear_audit(db, evento_id=evento_id, actor_usuario_id=actor_usuario_id, accion="update", detalle=detalle)
+        db.commit()
+
+    return registro
