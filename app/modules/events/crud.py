@@ -139,7 +139,7 @@ def obtener_evento(db: Session, evento_id: int) -> Evento | None:
     )
 
 
-def crear_intervencion(db: Session, *, evento_id: int, data):
+def crear_intervencion(db: Session, *, evento_id: int, data, actor_usuario_id: int):
     evento = db.query(Evento).filter(Evento.id == evento_id).first()
     if not evento:
         return None
@@ -151,7 +151,7 @@ def crear_intervencion(db: Session, *, evento_id: int, data):
     intervencion = EventoIntervencion(
         evento_id=evento_id,
         servicio_actuante_id=data.servicio_actuante_id,
-        actor_usuario_id=data.actor_usuario_id,
+        actor_usuario_id=actor_usuario_id,
         asignado_en=data.asignado_en,
         arribo_en=data.arribo_en,
         cerrado_en=data.cerrado_en,

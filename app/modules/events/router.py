@@ -1,4 +1,5 @@
 from datetime import datetime
+from typing import Annotated
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
@@ -6,6 +7,7 @@ from app.database.session import get_db
 from app.core.deps import get_current_user
 from app.modules.events import crud
 from app.modules.events.presenter import to_evento_response
+from app.modules.users.models import Usuario
 from .schemas import (
     EventoResponse,
     EventoUpdate,
@@ -124,10 +126,13 @@ def eliminar_evento(
 def crear_intervencion(
     evento_id: int,
     data: IntervencionCreate,
+    usuario: Annotated[Usuario, Depends(get_current_user)],
     db: Session = Depends(get_db),
 ):
     try:
-        intervencion = crud.crear_intervencion(db, evento_id=evento_id, data=data)
+        intervencion = crud.crear_intervencion(
+            db, evento_id=evento_id, data=data, actor_usuario_id=usuario.id
+        )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
 

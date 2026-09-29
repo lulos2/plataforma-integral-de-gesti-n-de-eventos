@@ -79,7 +79,6 @@ class EventoCreate(EventoBase):
 
 class IntervencionCreate(RequestModel):
     servicio_actuante_id: int
-    actor_usuario_id: int
     asignado_en: datetime | None = None
     arribo_en: datetime | None = None
     cerrado_en: datetime | None = None
