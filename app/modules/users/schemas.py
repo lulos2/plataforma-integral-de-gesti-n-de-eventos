@@ -80,3 +80,28 @@ class UsuarioResponse(ResponseModel):
     roles: list[RolResponse] = []
     activo: bool
     fecha_creacion: datetime
+
+
+class ForgotPasswordRequest(RequestModel):
+    username: str | None = None
+    email: str | None = None
+
+
+class ForgotPasswordResponse(ResponseModel):
+    mensaje: str
+    # Solo presente en modo demo/desarrollo: en producción esto se manda por
+    # email y nunca se devuelve en la respuesta de la API.
+    reset_token: str
+    expira_en: datetime
+
+
+class ResetPasswordRequest(RequestModel):
+    token: str
+    password_nueva: str
+
+    @field_validator("password_nueva")
+    @classmethod
+    def validar_password_nueva(cls, value: str) -> str:
+        if len(value) < 8:
+            raise ValueError("la contraseña debe tener al menos 8 caracteres")
+        return value

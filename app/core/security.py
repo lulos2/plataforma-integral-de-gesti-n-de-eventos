@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import hashlib
+import secrets
 from datetime import datetime, timedelta, timezone
 
 from jose import JWTError, jwt
@@ -42,3 +44,13 @@ def decode_token_subject(token: str) -> str | None:
         return None
     sub = payload.get("sub")
     return sub if isinstance(sub, str) else None
+
+
+def generate_reset_token() -> str:
+    # Alta entropia: no hace falta un hash lento (bcrypt/pbkdf2) como con
+    # passwords elegidas por personas, ya que esto no es adivinable.
+    return secrets.token_urlsafe(32)
+
+
+def hash_reset_token(token: str) -> str:
+    return hashlib.sha256(token.encode("utf-8")).hexdigest()

@@ -1,7 +1,10 @@
+from datetime import datetime, timedelta, timezone
+
 from sqlalchemy.orm import Session
 
-from app.modules.users.models import Permission, Rol, Usuario
-from app.core.security import get_password_hash, verify_password
+from app.modules.users.models import PasswordResetToken, Permission, Rol, Usuario
+from app.core.config import get_settings
+from app.core.security import generate_reset_token, get_password_hash, hash_reset_token, verify_password
 from app.modules.users.schemas import RolCreate, UsuarioCreate
 from app.modules.users.permissions import PermissionCode
 
@@ -168,4 +171,69 @@ def autenticar_usuario(db: Session, *, username: str, password: str) -> Usuario 
         return None
     if not usuario.activo:
         return None
+    return usuario
+
+
+def solicitar_reset_password(
+    db: Session, *, username: str | None, email: str | None
+) -> tuple[Usuario, str, datetime] | None:
+    if username and email:
+        raise ValueError("enviar solo uno: username o email")
+    if not username and not email:
+        raise ValueError("debe indicar username o email")
+
+    query = db.query(Usuario)
+    usuario = (
+        query.filter(Usuario.username == username).first()
+        if username
+        else query.filter(Usuario.email == email).first()
+    )
+    if not usuario or not usuario.activo:
+        return None
+
+    # Cualquier token anterior sin usar queda invalidado: solo el ultimo pedido sirve.
+    db.query(PasswordResetToken).filter(
+        PasswordResetToken.usuario_id == usuario.id,
+        PasswordResetToken.usado_en.is_(None),
+    ).delete()
+
+    raw_token = generate_reset_token()
+    expira_en = datetime.now(timezone.utc) + timedelta(minutes=get_settings().reset_token_expire_minutes)
+
+    db.add(
+        PasswordResetToken(
+            usuario_id=usuario.id,
+            token_hash=hash_reset_token(raw_token),
+            expira_en=expira_en,
+        )
+    )
+    db.commit()
+
+    return usuario, raw_token, expira_en
+
+
+def resetear_password(db: Session, *, token: str, password_nueva: str) -> Usuario:
+    registro = (
+        db.query(PasswordResetToken)
+        .filter(PasswordResetToken.token_hash == hash_reset_token(token))
+        .first()
+    )
+    if not registro:
+        raise ValueError("token invalido")
+    if registro.usado_en is not None:
+        raise ValueError("token ya utilizado")
+    if registro.expira_en < datetime.now(timezone.utc):
+        raise ValueError("token expirado")
+
+    usuario = obtener_usuario_por_id(db, registro.usuario_id)
+    if not usuario:
+        raise ValueError("token invalido")
+
+    usuario.password_hash = get_password_hash(password_nueva)
+    registro.usado_en = datetime.now(timezone.utc)
+
+    db.add(usuario)
+    db.add(registro)
+    db.commit()
+    db.refresh(usuario)
     return usuario

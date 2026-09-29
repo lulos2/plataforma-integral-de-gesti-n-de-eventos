@@ -59,6 +59,7 @@ class Evento(Base):
     tipo_evento = relationship("TipoEvento")
     usuario = relationship("Usuario")
     videoseguridad = relationship("EventoVideoseguridad", uselist=False, viewonly=True)
+    zoonosis = relationship("EventoZoonosis", uselist=False, viewonly=True)
 
     __table_args__ = (
         Index("idx_eventos_geom", ubicacion, postgresql_using="gist"),

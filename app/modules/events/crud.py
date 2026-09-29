@@ -9,7 +9,7 @@ from geoalchemy2.shape import from_shape
 from shapely.geometry import Point
 
 from app.modules.events.models import Evento, EventoAudit, TipoEvento
-from app.modules.events.models_domain import EventoIntervencion, EventoVideoseguridad, ServicioActuante
+from app.modules.events.models_domain import EventoIntervencion, EventoVideoseguridad, EventoZoonosis, ServicioActuante
 
 
 class _EventoBaseData(Protocol):
@@ -100,6 +100,7 @@ def obtener_eventos(
         joinedload(Evento.tipo_evento),
         joinedload(Evento.videoseguridad).joinedload(EventoVideoseguridad.servicio_actuante),
         joinedload(Evento.videoseguridad).joinedload(EventoVideoseguridad.camara),
+        joinedload(Evento.zoonosis),
     )
 
     if area:
@@ -133,6 +134,7 @@ def obtener_evento(db: Session, evento_id: int) -> Evento | None:
             joinedload(Evento.tipo_evento),
             joinedload(Evento.videoseguridad).joinedload(EventoVideoseguridad.servicio_actuante),
             joinedload(Evento.videoseguridad).joinedload(EventoVideoseguridad.camara),
+            joinedload(Evento.zoonosis),
         )
         .filter(Evento.id == evento_id)
         .first()

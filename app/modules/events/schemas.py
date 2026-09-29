@@ -153,3 +153,8 @@ class EventoResponse(ResponseModel):
     movil_comisionado: str | None = None
     supervisor_nombre: str | None = None
     observaciones: str | None = None
+
+    # Datos propios de Zoonosis (solo presentes si area == "zoonosis")
+    especie: str | None = None
+    propietario: str | None = None
+    requiere_control_antirrabico: bool | None = None

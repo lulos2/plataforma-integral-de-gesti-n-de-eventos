@@ -54,3 +54,19 @@ class Usuario(Base):
 
     activo = Column(Boolean, nullable=False, server_default="true", index=True)
     fecha_creacion = Column(DateTime(timezone=True), server_default=func.now(), index=True)
+
+
+class PasswordResetToken(Base):
+    __tablename__ = "password_reset_tokens"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    usuario_id = Column(Integer, ForeignKey("usuarios.id", ondelete="CASCADE"), nullable=False, index=True)
+
+    # Se guarda solo el hash del token, nunca el valor crudo (igual que con passwords).
+    token_hash = Column(String, nullable=False, unique=True, index=True)
+
+    expira_en = Column(DateTime(timezone=True), nullable=False)
+    usado_en = Column(DateTime(timezone=True), nullable=True)
+    fecha_creacion = Column(DateTime(timezone=True), server_default=func.now())
+
+    usuario = relationship("Usuario")

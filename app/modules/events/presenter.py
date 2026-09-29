@@ -4,6 +4,7 @@ from app.modules.events.schemas import EventoResponse
 def to_evento_response(evento) -> EventoResponse:
     tipo = getattr(evento, "tipo_evento", None)
     vs = getattr(evento, "videoseguridad", None)
+    zoo = getattr(evento, "zoonosis", None)
     return EventoResponse(
         id=evento.id,
         area=tipo.area if tipo else "",
@@ -31,6 +32,9 @@ def to_evento_response(evento) -> EventoResponse:
         prioridad=vs.prioridad if vs else None,
         movil_comisionado=vs.movil_comisionado if vs else None,
         supervisor_nombre=vs.supervisor_nombre if vs else None,
-        observaciones=vs.observaciones if vs else None,
+        observaciones=(vs.observaciones if vs else None) or (zoo.observaciones if zoo else None),
+        especie=zoo.especie if zoo else None,
+        propietario=zoo.propietario if zoo else None,
+        requiere_control_antirrabico=zoo.requiere_control_antirrabico if zoo else None,
     )
 

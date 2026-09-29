@@ -12,6 +12,7 @@ class Settings:
     database_url: str
     secret_key: str
     access_token_expire_minutes: int
+    reset_token_expire_minutes: int
     bootstrap_superadmin_username: str | None
     bootstrap_superadmin_password: str | None
 
@@ -49,6 +50,7 @@ def get_settings() -> Settings:
         database_url=database_url,
         secret_key=secret_key,
         access_token_expire_minutes=_read_int("ACCESS_TOKEN_EXPIRE_MINUTES", 60),
+        reset_token_expire_minutes=_read_int("RESET_TOKEN_EXPIRE_MINUTES", 30),
         bootstrap_superadmin_username=os.getenv("BOOTSTRAP_SUPERADMIN_USERNAME") or None,
         bootstrap_superadmin_password=os.getenv("BOOTSTRAP_SUPERADMIN_PASSWORD") or None,
     )
