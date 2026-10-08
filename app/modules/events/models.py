@@ -23,7 +23,7 @@ class Evento(Base):
     # Información
     descripcion = Column(Text)
     fuente = Column(String, nullable=False, server_default="manual", index=True)  # manual | automatico | integracion_x
-    estado = Column(String, nullable=False, server_default="abierto", index=True)  # abierto | en_proceso | cerrado
+    estado = Column(String, nullable=False, server_default="abierto", index=True)  # abierto | cerrado
     fecha_ocurrencia = Column(DateTime(timezone=True), nullable=True, index=True)
     fecha_creacion = Column(DateTime(timezone=True), server_default=func.now(), index=True)
     fecha_actualizacion = Column(
@@ -56,8 +56,13 @@ class Evento(Base):
     # Auditoría
     usuario_id = Column(Integer, ForeignKey("usuarios.id"), nullable=False, index=True)
 
+    # Cierre (se completan al pasar a "cerrado")
+    fecha_cierre = Column(DateTime(timezone=True), nullable=True)
+    cerrado_por_id = Column(Integer, ForeignKey("usuarios.id"), nullable=True)
+    observaciones_cierre = Column(Text, nullable=True)
+
     tipo_evento = relationship("TipoEvento")
-    usuario = relationship("Usuario")
+    usuario = relationship("Usuario", foreign_keys=[usuario_id])
     videoseguridad = relationship("EventoVideoseguridad", uselist=False, viewonly=True)
     zoonosis = relationship("EventoZoonosis", uselist=False, viewonly=True)
 

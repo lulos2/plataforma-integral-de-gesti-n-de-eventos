@@ -9,6 +9,8 @@ from app.modules.events import crud
 from app.modules.events.presenter import to_evento_response
 from app.modules.users.models import Usuario
 from .schemas import (
+    EstadisticasResponse,
+    PuntoMapa,
     EventoResponse,
     EventoUpdate,
     EventoCreate,
@@ -33,6 +35,11 @@ def listar_eventos(
     estado: str | None = None,
     fecha_desde: datetime | None = Query(default=None),
     fecha_hasta: datetime | None = Query(default=None),
+    limite: int | None = Query(default=None, ge=1, le=200),
+    turno: str | None = None,
+    direccion: str | None = None,
+    especie: str | None = None,
+    buscar: str | None = None,
 ):
 
     eventos = crud.obtener_eventos(
@@ -43,6 +50,11 @@ def listar_eventos(
         estado=estado,
         fecha_desde=fecha_desde,
         fecha_hasta=fecha_hasta,
+        limite=limite,
+        turno=turno,
+        direccion=direccion,
+        especie=especie,
+        buscar=buscar,
     )
     return [to_evento_response(e) for e in eventos]
 
@@ -73,6 +85,41 @@ def listar_tipos_evento(
     area: str | None = None,
 ):
     return crud.listar_tipos_evento(db, area=area)
+
+
+# Debe declararse antes de "/{evento_id}", si no "mapa" se interpreta como un id.
+@router.get("/mapa", response_model=list[PuntoMapa])
+def puntos_mapa(
+    db: Session = Depends(get_db),
+    usuario=Depends(get_current_user),
+    area: str | None = None,
+    tipo_evento_id: int | None = None,
+    servicio_actuante_id: int | None = None,
+    estado: str | None = None,
+    turno: str | None = None,
+    fecha_desde: datetime | None = Query(default=None),
+    fecha_hasta: datetime | None = Query(default=None),
+):
+    return crud.obtener_puntos_mapa(
+        db,
+        area=area,
+        tipo_evento_id=tipo_evento_id,
+        servicio_actuante_id=servicio_actuante_id,
+        estado=estado,
+        turno=turno,
+        fecha_desde=fecha_desde,
+        fecha_hasta=fecha_hasta,
+    )
+
+
+# Debe declararse antes de "/{evento_id}", si no "estadisticas" se interpreta como un id.
+@router.get("/estadisticas", response_model=EstadisticasResponse)
+def estadisticas(
+    db: Session = Depends(get_db),
+    usuario=Depends(get_current_user),
+    area: str | None = None,
+):
+    return crud.obtener_estadisticas(db, area=area)
 
 
 @router.get("/{evento_id}", response_model=EventoResponse)

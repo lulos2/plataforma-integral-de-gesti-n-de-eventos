@@ -25,6 +25,18 @@ def _validar_origen(value: str | None) -> str | None:
     return origen
 
 
+ESTADOS_VALIDOS = {"abierto", "cerrado"}
+
+
+def _validar_estado(value: str | None) -> str | None:
+    if value is None:
+        return value
+    estado = value.strip().lower()
+    if estado not in ESTADOS_VALIDOS:
+        raise ValueError(f"estado invalido. Valores: {', '.join(sorted(ESTADOS_VALIDOS))}")
+    return estado
+
+
 class TipoEventoBase(RequestModel):
     area: str
     nombre: str
@@ -47,11 +59,17 @@ class EventoBase(RequestModel):
     origen: str | None = None
     recibio_nombre: str | None = None
     recibio_funcion: str | None = None
+    observaciones_cierre: str | None = None
 
     @field_validator("origen")
     @classmethod
     def _check_origen(cls, value: str | None) -> str | None:
         return _validar_origen(value)
+
+    @field_validator("estado")
+    @classmethod
+    def _check_estado(cls, value: str | None) -> str | None:
+        return _validar_estado(value)
 
 
 class EventoCommonCreate(RequestModel):
@@ -66,11 +84,17 @@ class EventoCommonCreate(RequestModel):
     origen: str | None = None
     recibio_nombre: str | None = None
     recibio_funcion: str | None = None
+    observaciones_cierre: str | None = None
 
     @field_validator("origen")
     @classmethod
     def _check_origen(cls, value: str | None) -> str | None:
         return _validar_origen(value)
+
+    @field_validator("estado")
+    @classmethod
+    def _check_estado(cls, value: str | None) -> str | None:
+        return _validar_estado(value)
 
 
 class EventoCreate(EventoBase):
@@ -113,12 +137,18 @@ class EventoUpdate(RequestModel):
     origen: str | None = None
     recibio_nombre: str | None = None
     recibio_funcion: str | None = None
+    observaciones_cierre: str | None = None
     # actor (auditoría real) se toma del usuario autenticado
 
     @field_validator("origen")
     @classmethod
     def _check_origen(cls, value: str | None) -> str | None:
         return _validar_origen(value)
+
+    @field_validator("estado")
+    @classmethod
+    def _check_estado(cls, value: str | None) -> str | None:
+        return _validar_estado(value)
 
 
 class EventoResponse(ResponseModel):
@@ -144,6 +174,11 @@ class EventoResponse(ResponseModel):
     recibio_funcion: str | None = None
     usuario_id: int
 
+    # Cierre (solo presentes si el evento esta cerrado)
+    fecha_cierre: datetime | None = None
+    cerrado_por_id: int | None = None
+    observaciones_cierre: str | None = None
+
     # Datos propios del Centro de Monitoreo (solo presentes si area == "videoseguridad")
     servicio_actuante: str | None = None
     servicio_actuante_id: int | None = None
@@ -158,3 +193,31 @@ class EventoResponse(ResponseModel):
     especie: str | None = None
     propietario: str | None = None
     requiere_control_antirrabico: bool | None = None
+
+
+class PuntoMapa(ResponseModel):
+    id: int
+    numero_evento: int
+    latitud: float
+    longitud: float
+    area: str
+    tipo_evento: str
+    estado: str
+    fecha: datetime | None = None
+
+
+class EstadisticasPorTipo(ResponseModel):
+    area: str
+    tipo_evento: str
+    cantidad: int
+
+
+class EstadisticasResponse(ResponseModel):
+    area: str | None = None
+    total: int
+    abiertos: int
+    cerrados: int
+    hoy: int
+    semana: int
+    mes: int
+    por_tipo: list[EstadisticasPorTipo]

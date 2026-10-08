@@ -113,6 +113,16 @@ async def lifespan(_: FastAPI):
             conn.execute(text("ALTER TABLE eventos_zoonosis ADD COLUMN IF NOT EXISTS propietario VARCHAR"))
             conn.execute(text("ALTER TABLE eventos_intervenciones ADD COLUMN IF NOT EXISTS resultado TEXT"))
 
+            # Cierre de eventos: cuando, quien y observaciones de cierre.
+            conn.execute(text("ALTER TABLE eventos ADD COLUMN IF NOT EXISTS fecha_cierre TIMESTAMPTZ"))
+            conn.execute(
+                text("ALTER TABLE eventos ADD COLUMN IF NOT EXISTS cerrado_por_id INTEGER REFERENCES usuarios(id)")
+            )
+            conn.execute(text("ALTER TABLE eventos ADD COLUMN IF NOT EXISTS observaciones_cierre TEXT"))
+
+            # Estados: solo "abierto" y "cerrado". Lo que haya quedado en "en_proceso" pasa a "abierto".
+            conn.execute(text("UPDATE eventos SET estado = 'abierto' WHERE estado = 'en_proceso'"))
+
     db = SessionLocal()
     try:
         sync_tipos_evento(db)
