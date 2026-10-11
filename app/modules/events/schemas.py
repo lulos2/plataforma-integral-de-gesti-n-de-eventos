@@ -1,7 +1,7 @@
 from pydantic import BaseModel, ConfigDict, field_validator
 from datetime import datetime
 
-from app.core.serialization import ArgentinaResponseModel
+from app.core.serialization import ARGENTINA_TZ, ArgentinaResponseModel
 
 
 class RequestModel(BaseModel):
@@ -37,6 +37,14 @@ def _validar_estado(value: str | None) -> str | None:
     return estado
 
 
+def _fecha_con_zona(value: datetime | None) -> datetime | None:
+    # Una fecha sin zona horaria se interpreta como hora argentina (si no, la tomaria como UTC
+    # y los eventos cercanos a medianoche caerian en el dia equivocado).
+    if value is not None and value.tzinfo is None:
+        return value.replace(tzinfo=ARGENTINA_TZ)
+    return value
+
+
 class TipoEventoBase(RequestModel):
     area: str
     nombre: str
@@ -51,7 +59,7 @@ class EventoBase(RequestModel):
     descripcion: str | None = None
     fuente: str = "manual"
     estado: str = "abierto"
-    fecha_ocurrencia: datetime | None = None
+    fecha_ocurrencia: datetime  # obligatoria: cuando ocurrio el hecho (fecha_creacion es cuando se cargo)
     latitud: float
     longitud: float
     turno: str | None = None
@@ -60,6 +68,11 @@ class EventoBase(RequestModel):
     recibio_nombre: str | None = None
     recibio_funcion: str | None = None
     observaciones_cierre: str | None = None
+
+    @field_validator("fecha_ocurrencia")
+    @classmethod
+    def _check_fecha_ocurrencia(cls, value: datetime) -> datetime:
+        return _fecha_con_zona(value)
 
     @field_validator("origen")
     @classmethod
@@ -76,7 +89,7 @@ class EventoCommonCreate(RequestModel):
     descripcion: str | None = None
     fuente: str = "manual"
     estado: str = "abierto"
-    fecha_ocurrencia: datetime | None = None
+    fecha_ocurrencia: datetime  # obligatoria: cuando ocurrio el hecho (fecha_creacion es cuando se cargo)
     latitud: float
     longitud: float
     turno: str | None = None
@@ -85,6 +98,11 @@ class EventoCommonCreate(RequestModel):
     recibio_nombre: str | None = None
     recibio_funcion: str | None = None
     observaciones_cierre: str | None = None
+
+    @field_validator("fecha_ocurrencia")
+    @classmethod
+    def _check_fecha_ocurrencia(cls, value: datetime) -> datetime:
+        return _fecha_con_zona(value)
 
     @field_validator("origen")
     @classmethod
@@ -139,6 +157,11 @@ class EventoUpdate(RequestModel):
     recibio_funcion: str | None = None
     observaciones_cierre: str | None = None
     # actor (auditoría real) se toma del usuario autenticado
+
+    @field_validator("fecha_ocurrencia")
+    @classmethod
+    def _check_fecha_ocurrencia(cls, value: datetime | None) -> datetime | None:
+        return _fecha_con_zona(value)
 
     @field_validator("origen")
     @classmethod

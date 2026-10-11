@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
-from app.core.deps import get_current_user
+from app.core.deps import require_permissions, verificar_acceso_area
 from app.database.session import get_db
 from app.modules.events import crud as events_crud
 from app.modules.events.presenter import to_evento_response
@@ -18,8 +18,10 @@ def crear_evento_zoonosis(
     tipo: str,
     data: EventoZoonosisCreate,
     db: Session = Depends(get_db),
-    usuario=Depends(get_current_user),
+    usuario=Depends(require_permissions("eventos:write")),
 ):
+    verificar_acceso_area(usuario, "zoonosis")
+
     try:
         creado = crud.crear_evento_zoonosis(db, tipo_nombre=tipo, data=data, actor_usuario_id=usuario.id)
     except ValueError as e:
@@ -34,8 +36,12 @@ def actualizar_evento_zoonosis(
     evento_id: int,
     data: EventoZoonosisUpdate,
     db: Session = Depends(get_db),
-    usuario=Depends(get_current_user),
+    usuario=Depends(require_permissions("eventos:write")),
 ):
+    existente = events_crud.obtener_evento(db, evento_id)
+    if existente:
+        verificar_acceso_area(usuario, existente.tipo_evento.area)
+
     try:
         actualizado = crud.actualizar_evento_zoonosis(
             db, evento_id=evento_id, data=data, actor_usuario_id=usuario.id

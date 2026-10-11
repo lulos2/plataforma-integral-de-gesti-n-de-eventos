@@ -18,7 +18,7 @@ class _EventoBaseData(Protocol):
     descripcion: str | None
     fuente: str
     estado: str
-    fecha_ocurrencia: datetime | None
+    fecha_ocurrencia: datetime
     latitud: float
     longitud: float
     turno: str | None
@@ -188,9 +188,9 @@ def obtener_puntos_mapa(
     fecha_desde: datetime | None = None,
     fecha_hasta: datetime | None = None,
 ) -> list[dict]:
-    # Consulta liviana (solo lo que necesita el mapa). La fecha de un evento es su
-    # fecha_ocurrencia o, si no la tiene, la de carga.
-    fecha_evento = func.coalesce(Evento.fecha_ocurrencia, Evento.fecha_creacion)
+    # Consulta liviana (solo lo que necesita el mapa). La fecha de un evento es siempre su
+    # fecha_ocurrencia (la de carga no la reemplaza).
+    fecha_evento = Evento.fecha_ocurrencia
 
     q = db.query(
         Evento.id,
@@ -244,7 +244,8 @@ def obtener_estadisticas(db: Session, *, area: str | None = None) -> dict:
     fin_semana = inicio_semana + timedelta(days=7)
     fin_mes = (inicio_mes + timedelta(days=32)).replace(day=1)
 
-    fecha_evento = func.coalesce(Evento.fecha_ocurrencia, Evento.fecha_creacion)
+    # Los eventos viejos sin fecha_ocurrencia cuentan en los totales pero no en hoy/semana/mes.
+    fecha_evento = Evento.fecha_ocurrencia
 
     q = db.query(Evento)
     if area:

@@ -13,6 +13,7 @@ class Settings:
     secret_key: str
     access_token_expire_minutes: int
     reset_token_expire_minutes: int
+    cors_origins: tuple[str, ...]
     bootstrap_superadmin_username: str | None
     bootstrap_superadmin_password: str | None
 
@@ -25,6 +26,15 @@ def _read_int(name: str, default: int) -> int:
         return int(raw)
     except ValueError as exc:
         raise RuntimeError(f"Invalid integer env var {name}={raw!r}") from exc
+
+
+DEFAULT_CORS_ORIGINS = ("http://localhost:5173", "http://127.0.0.1:5173")
+
+
+def _read_origins(name: str) -> tuple[str, ...]:
+    raw = os.getenv(name) or ""
+    origins = tuple(o.strip().rstrip("/") for o in raw.split(",") if o.strip())
+    return origins or DEFAULT_CORS_ORIGINS
 
 
 @lru_cache(maxsize=1)
@@ -51,6 +61,7 @@ def get_settings() -> Settings:
         secret_key=secret_key,
         access_token_expire_minutes=_read_int("ACCESS_TOKEN_EXPIRE_MINUTES", 60),
         reset_token_expire_minutes=_read_int("RESET_TOKEN_EXPIRE_MINUTES", 30),
+        cors_origins=_read_origins("CORS_ORIGINS"),
         bootstrap_superadmin_username=os.getenv("BOOTSTRAP_SUPERADMIN_USERNAME") or None,
         bootstrap_superadmin_password=os.getenv("BOOTSTRAP_SUPERADMIN_PASSWORD") or None,
     )

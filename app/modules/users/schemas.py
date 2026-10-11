@@ -3,6 +3,7 @@ import re
 
 from pydantic import BaseModel, ConfigDict, field_validator
 
+from app.core.areas import validar_area
 from app.core.serialization import ArgentinaResponseModel
 
 
@@ -41,6 +42,12 @@ class UsuarioCreate(RequestModel):
     apellido: str
     rol_ids: list[int]
     password: str
+    area: str | None = None
+
+    @field_validator("area")
+    @classmethod
+    def validar_area_usuario(cls, value: str | None) -> str | None:
+        return validar_area(value)
 
     @field_validator("email")
     @classmethod
@@ -71,15 +78,33 @@ class UsuarioRolesUpdate(RequestModel):
         return ids
 
 
+class UsuarioAreaUpdate(RequestModel):
+    # null deja al usuario sin area.
+    area: str | None
+
+    @field_validator("area")
+    @classmethod
+    def validar_area_usuario(cls, value: str | None) -> str | None:
+        return validar_area(value)
+
+
 class UsuarioResponse(ResponseModel):
     id: int
     username: str
     email: str | None = None
     nombre: str | None = None
     apellido: str | None = None
+    area: str | None = None
     roles: list[RolResponse] = []
     activo: bool
     fecha_creacion: datetime
+
+
+class UsuarioMeResponse(UsuarioResponse):
+    # Pensado para que el frontend adapte la interfaz.
+    rol: str | None = None
+    permisos: list[str] = []
+    areas_acceso: list[str] = []
 
 
 class ForgotPasswordRequest(RequestModel):

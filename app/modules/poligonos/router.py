@@ -5,7 +5,7 @@ from datetime import datetime
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
-from app.core.deps import get_current_user, require_admin_dios
+from app.core.deps import get_current_user, require_admin_dios, require_permissions, resolver_area_consulta
 from app.database.session import get_db
 from app.modules.events.presenter import to_evento_response
 from app.modules.events.schemas import EventoResponse
@@ -49,10 +49,11 @@ def listar_eventos_en_poligono(
     servicio_actuante_id: int | None = None,
     fecha_desde: datetime | None = Query(default=None),
     fecha_hasta: datetime | None = Query(default=None),
-    _actor=Depends(get_current_user),
+    usuario=Depends(require_permissions("eventos:read")),
 ):
     if area and tipo_evento_id is not None:
         raise HTTPException(status_code=400, detail="usar solo uno: area o tipo_evento_id")
+    area = resolver_area_consulta(usuario, area)
 
     poligono = crud.obtener_poligono(db, poligono_id=poligono_id)
     if not poligono:

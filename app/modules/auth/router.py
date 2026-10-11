@@ -5,12 +5,13 @@ from sqlalchemy.orm import Session
 
 from app.database.session import get_db
 from app.core.security import create_access_token
-from app.core.deps import get_current_user
+from app.core.deps import areas_accesibles, get_current_user, permisos_efectivos
 from app.modules.users import crud as users_crud
 from app.modules.users.schemas import (
     ForgotPasswordRequest,
     ForgotPasswordResponse,
     ResetPasswordRequest,
+    UsuarioMeResponse,
     UsuarioResponse,
 )
 
@@ -39,9 +40,16 @@ def login_for_access_token(
     return TokenResponse(access_token=token)
 
 
-@router.get("/me", response_model=UsuarioResponse)
+@router.get("/me", response_model=UsuarioMeResponse)
 def me(usuario=Depends(get_current_user)):
-    return usuario
+    roles = sorted(r.nombre for r in usuario.roles)
+    return UsuarioMeResponse.model_validate(usuario).model_copy(
+        update={
+            "rol": roles[0] if roles else None,
+            "permisos": permisos_efectivos(usuario),
+            "areas_acceso": areas_accesibles(usuario),
+        }
+    )
 
 
 @router.post("/forgot-password", response_model=ForgotPasswordResponse)

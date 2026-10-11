@@ -3,6 +3,7 @@ from __future__ import annotations
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import text
 
 from app.core.config import get_settings
@@ -32,6 +33,8 @@ async def lifespan(_: FastAPI):
             conn.execute(text("ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS password_hash TEXT"))
             conn.execute(text("ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS nombre VARCHAR"))
             conn.execute(text("ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS apellido VARCHAR"))
+            conn.execute(text("ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS area VARCHAR"))
+            conn.execute(text("CREATE INDEX IF NOT EXISTS ix_usuarios_area ON usuarios (area)"))
             conn.execute(
                 text(
                     """
@@ -145,6 +148,16 @@ async def lifespan(_: FastAPI):
 
 
 app = FastAPI(title="API Municipalidad Rauch", version="1.0", lifespan=lifespan)
+
+# Origenes permitidos para el frontend. En produccion definir CORS_ORIGINS (separados por coma).
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=list(get_settings().cors_origins),
+    allow_credentials=False,
+    allow_methods=["GET", "POST", "PUT", "DELETE", "PATCH"],
+    allow_headers=["Authorization", "Content-Type"],
+)
+
 app.include_router(api_router)
 
 

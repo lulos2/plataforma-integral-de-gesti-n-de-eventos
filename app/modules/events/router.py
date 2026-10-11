@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
 from app.database.session import get_db
-from app.core.deps import get_current_user
+from app.core.deps import require_permissions, resolver_area_consulta, verificar_acceso_area
 from app.modules.events import crud
 from app.modules.events.presenter import to_evento_response
 from app.modules.users.models import Usuario
@@ -26,9 +26,19 @@ router = APIRouter(
 )
 
 
+def _evento_autorizado(db: Session, usuario: Usuario, evento_id: int):
+    """Trae el evento: 404 si no existe, 403 si es de un area a la que el usuario no accede."""
+    evento = crud.obtener_evento(db, evento_id)
+    if not evento:
+        raise HTTPException(status_code=404, detail="Evento no encontrado")
+    verificar_acceso_area(usuario, evento.tipo_evento.area)
+    return evento
+
+
 @router.get("/", response_model=list[EventoResponse])
 def listar_eventos(
     db: Session = Depends(get_db),
+    usuario=Depends(require_permissions("eventos:read")),
     area: str | None = None,
     tipo_evento_id: int | None = None,
     servicio_actuante_id: int | None = None,
@@ -41,6 +51,8 @@ def listar_eventos(
     especie: str | None = None,
     buscar: str | None = None,
 ):
+    # Un usuario limitado a su area siempre consulta solo esa area (aunque pida otra o ninguna).
+    area = resolver_area_consulta(usuario, area)
 
     eventos = crud.obtener_eventos(
         db,
@@ -62,8 +74,13 @@ def listar_eventos(
 def crear_evento(
     data: EventoCreate,
     db: Session = Depends(get_db),
-    usuario=Depends(get_current_user),
+    usuario=Depends(require_permissions("eventos:write")),
 ):
+    tipo = crud.obtener_tipo_evento(db, tipo_evento_id=data.tipo_evento_id)
+    if not tipo:
+        raise HTTPException(status_code=400, detail="tipo_evento_id invalido")
+    verificar_acceso_area(usuario, tipo.area)
+
     try:
         evento, _ = crud.crear_evento_base(
             db,
@@ -82,16 +99,17 @@ def crear_evento(
 @router.get("/tipos", response_model=list[TipoEventoResponse])
 def listar_tipos_evento(
     db: Session = Depends(get_db),
+    usuario=Depends(require_permissions("eventos:read")),
     area: str | None = None,
 ):
-    return crud.listar_tipos_evento(db, area=area)
+    return crud.listar_tipos_evento(db, area=resolver_area_consulta(usuario, area))
 
 
 # Debe declararse antes de "/{evento_id}", si no "mapa" se interpreta como un id.
 @router.get("/mapa", response_model=list[PuntoMapa])
 def puntos_mapa(
     db: Session = Depends(get_db),
-    usuario=Depends(get_current_user),
+    usuario=Depends(require_permissions("estadisticas:read")),
     area: str | None = None,
     tipo_evento_id: int | None = None,
     servicio_actuante_id: int | None = None,
@@ -102,7 +120,7 @@ def puntos_mapa(
 ):
     return crud.obtener_puntos_mapa(
         db,
-        area=area,
+        area=resolver_area_consulta(usuario, area),
         tipo_evento_id=tipo_evento_id,
         servicio_actuante_id=servicio_actuante_id,
         estado=estado,
@@ -116,24 +134,19 @@ def puntos_mapa(
 @router.get("/estadisticas", response_model=EstadisticasResponse)
 def estadisticas(
     db: Session = Depends(get_db),
-    usuario=Depends(get_current_user),
+    usuario=Depends(require_permissions("estadisticas:read")),
     area: str | None = None,
 ):
-    return crud.obtener_estadisticas(db, area=area)
+    return crud.obtener_estadisticas(db, area=resolver_area_consulta(usuario, area))
 
 
 @router.get("/{evento_id}", response_model=EventoResponse)
 def obtener_evento(
     evento_id: int,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    usuario=Depends(require_permissions("eventos:read")),
 ):
-
-    evento = crud.obtener_evento(db, evento_id)
-
-    if not evento:
-        raise HTTPException(status_code=404, detail="Evento no encontrado")
-
-    return to_evento_response(evento)
+    return to_evento_response(_evento_autorizado(db, usuario, evento_id))
 
 
 @router.put("/{evento_id}", response_model=EventoResponse)
@@ -141,8 +154,10 @@ def actualizar_evento(
     evento_id: int,
     data: EventoUpdate,
     db: Session = Depends(get_db),
-    usuario=Depends(get_current_user),
+    usuario=Depends(require_permissions("eventos:write")),
 ):
+    _evento_autorizado(db, usuario, evento_id)
+
     try:
         evento = crud.actualizar_evento(db, evento_id, data, actor_usuario_id=usuario.id)
     except ValueError as e:
@@ -158,8 +173,9 @@ def actualizar_evento(
 def eliminar_evento(
     evento_id: int,
     db: Session = Depends(get_db),
-    usuario=Depends(get_current_user),
+    usuario=Depends(require_permissions("eventos:anular")),
 ):
+    _evento_autorizado(db, usuario, evento_id)
 
     evento = crud.eliminar_evento(db, evento_id=evento_id, actor_usuario_id=usuario.id)
 
@@ -173,9 +189,11 @@ def eliminar_evento(
 def crear_intervencion(
     evento_id: int,
     data: IntervencionCreate,
-    usuario: Annotated[Usuario, Depends(get_current_user)],
+    usuario: Annotated[Usuario, Depends(require_permissions("eventos:write"))],
     db: Session = Depends(get_db),
 ):
+    _evento_autorizado(db, usuario, evento_id)
+
     try:
         intervencion = crud.crear_intervencion(
             db, evento_id=evento_id, data=data, actor_usuario_id=usuario.id
@@ -193,5 +211,7 @@ def crear_intervencion(
 def listar_intervenciones(
     evento_id: int,
     db: Session = Depends(get_db),
+    usuario=Depends(require_permissions("eventos:read")),
 ):
+    _evento_autorizado(db, usuario, evento_id)
     return crud.listar_intervenciones(db, evento_id=evento_id)

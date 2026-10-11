@@ -10,7 +10,7 @@ from app.modules.users.permissions import PermissionCode
 
 
 def crear_rol(db: Session, data: RolCreate) -> Rol:
-    reserved = {"adminDios", "superadmin", "admin", "operador", "auditor"}
+    reserved = {"adminDios", "superadmin", "admin", "operador", "supervisor", "auditor"}
     if data.nombre in reserved:
         raise ValueError(f"rol reservado: {data.nombre}")
 
@@ -73,6 +73,7 @@ def crear_usuario(db: Session, data: UsuarioCreate) -> Usuario:
         email=str(data.email),
         nombre=data.nombre,
         apellido=data.apellido,
+        area=data.area,
         password_hash=get_password_hash(data.password),
     )
     usuario.roles = roles
@@ -149,6 +150,18 @@ def actualizar_roles_usuario(db: Session, *, usuario_id: int, rol_ids: list[int]
         raise ValueError("no se puede quitar el rol adminDios al usuario adminDios")
 
     usuario.roles = roles
+    db.add(usuario)
+    db.commit()
+    db.refresh(usuario)
+    return usuario
+
+
+def actualizar_area_usuario(db: Session, *, usuario_id: int, area: str | None) -> Usuario | None:
+    usuario = db.query(Usuario).filter(Usuario.id == usuario_id).first()
+    if not usuario:
+        return None
+
+    usuario.area = area
     db.add(usuario)
     db.commit()
     db.refresh(usuario)

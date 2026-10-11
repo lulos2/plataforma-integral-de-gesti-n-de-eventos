@@ -5,9 +5,11 @@ from fastapi.security import OAuth2PasswordBearer
 from sqlalchemy.orm import Session
 
 from app.database.session import get_db
+from app.core.areas import AREAS_VALIDAS, normalizar_area
 from app.core.security import decode_token_subject
 from app.modules.users import crud as users_crud
 from app.modules.users.models import Usuario
+from app.modules.users.permissions import PermissionCode
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/token")
 ADMIN_DIOS_ROLE_NAME = "adminDios"
@@ -52,6 +54,56 @@ def _user_permission_codes(usuario: Usuario) -> set[str]:
         perms = getattr(rol, "permissions", None) or []
         codes.update({p.code for p in perms if getattr(p, "code", None)})
     return codes
+
+
+def permisos_efectivos(usuario: Usuario) -> list[str]:
+    """Lista de permisos que realmente tiene el usuario (adminDios: todos)."""
+    codes = _user_permission_codes(usuario)
+    if "*" in codes:
+        return sorted(c.value for c in PermissionCode)
+    return sorted(codes)
+
+
+def areas_accesibles(usuario: Usuario) -> list[str]:
+    """Areas cuyos datos puede ver: todas, solo la suya o ninguna si no tiene area asignada."""
+    if tiene_acceso_a_todas_las_areas(usuario):
+        return list(AREAS_VALIDAS)
+    return [usuario.area] if usuario.area else []
+
+
+def tiene_acceso_a_todas_las_areas(usuario: Usuario) -> bool:
+    codes = _user_permission_codes(usuario)
+    return "*" in codes or PermissionCode.AREAS_ALL.value in codes
+
+
+def verificar_acceso_area(usuario: Usuario, area: str | None) -> None:
+    """Corta con 403 si el usuario no puede acceder a datos de esa area."""
+    if tiene_acceso_a_todas_las_areas(usuario):
+        return
+    if not usuario.area:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="El usuario no tiene un area asignada",
+        )
+    if area != usuario.area:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="No tiene acceso a datos de esa area",
+        )
+
+
+def resolver_area_consulta(usuario: Usuario, area: str | None) -> str | None:
+    """
+    Area por la que hay que filtrar una consulta.
+
+    Con acceso a todas las areas devuelve lo que pidio (None = sin filtro). Si no, fuerza el area
+    del usuario y rechaza pedir otra.
+    """
+    area = normalizar_area(area)
+    if tiene_acceso_a_todas_las_areas(usuario):
+        return area
+    verificar_acceso_area(usuario, area or usuario.area)
+    return usuario.area
 
 
 def require_permissions(*required: str):

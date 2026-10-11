@@ -47,6 +47,9 @@ class Usuario(Base):
     email = Column(String, nullable=True, unique=True, index=True)
     nombre = Column(String, nullable=True)
     apellido = Column(String, nullable=True)
+    # Area a la que pertenece (videoseguridad | zoonosis | bromatologia). Limita los datos que ve,
+    # salvo que tenga el permiso areas:all. Sin area asignada no accede a datos de ningun area.
+    area = Column(String, nullable=True, index=True)
     # Nullable for backwards compatibility if the table already existed.
     password_hash = Column(Text, nullable=True)
 

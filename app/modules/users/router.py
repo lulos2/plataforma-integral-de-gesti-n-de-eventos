@@ -8,6 +8,7 @@ from app.modules.users.schemas import (
     PermissionResponse,
     RolCreate,
     RolResponse,
+    UsuarioAreaUpdate,
     UsuarioCreate,
     UsuarioRolesUpdate,
     UsuarioResponse,
@@ -103,6 +104,19 @@ def actualizar_roles_usuario(
         usuario = crud.actualizar_roles_usuario(db, usuario_id=usuario_id, rol_ids=data.rol_ids)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
+    if not usuario:
+        raise HTTPException(status_code=404, detail="Usuario no encontrado")
+    return usuario
+
+
+@router.patch("/{usuario_id}/area", response_model=UsuarioResponse)
+def actualizar_area_usuario(
+    usuario_id: int,
+    data: UsuarioAreaUpdate,
+    db: Session = Depends(get_db),
+    _actor=Depends(require_admin_dios),
+):
+    usuario = crud.actualizar_area_usuario(db, usuario_id=usuario_id, area=data.area)
     if not usuario:
         raise HTTPException(status_code=404, detail="Usuario no encontrado")
     return usuario

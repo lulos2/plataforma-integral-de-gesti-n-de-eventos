@@ -39,9 +39,34 @@ def sync_permissions(db: Session) -> None:
 
 SYSTEM_ROLES: dict[str, tuple[PermissionCode, ...]] = {
     ADMIN_DIOS_ROLE_NAME: tuple(PermissionCode),
-    "admin": (PermissionCode.ROLES_READ, PermissionCode.USERS_READ, PermissionCode.USERS_WRITE),
-    "operador": (PermissionCode.USERS_READ,),
-    "auditor": (PermissionCode.ROLES_READ, PermissionCode.USERS_READ),
+    # Administrador de area: registra, consulta, modifica y anula eventos de su area.
+    "admin": (
+        PermissionCode.ROLES_READ,
+        PermissionCode.USERS_READ,
+        PermissionCode.USERS_WRITE,
+        PermissionCode.EVENTOS_READ,
+        PermissionCode.EVENTOS_WRITE,
+        PermissionCode.EVENTOS_ANULAR,
+        PermissionCode.ESTADISTICAS_READ,
+    ),
+    # Operador: registra, consulta y modifica eventos de su area, y ve mapas/estadisticas.
+    "operador": (
+        PermissionCode.EVENTOS_READ,
+        PermissionCode.EVENTOS_WRITE,
+        PermissionCode.ESTADISTICAS_READ,
+    ),
+    # Supervisor: consulta todas las areas, sin poder agregar ni modificar.
+    "supervisor": (
+        PermissionCode.EVENTOS_READ,
+        PermissionCode.ESTADISTICAS_READ,
+        PermissionCode.AREAS_ALL,
+    ),
+    "auditor": (
+        PermissionCode.ROLES_READ,
+        PermissionCode.USERS_READ,
+        PermissionCode.EVENTOS_READ,
+        PermissionCode.ESTADISTICAS_READ,
+    ),
 }
 
 

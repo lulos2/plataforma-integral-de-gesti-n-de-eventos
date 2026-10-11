@@ -150,8 +150,8 @@ def listar_eventos_en_poligono(
             EventoVideoseguridad.servicio_actuante_id == servicio_actuante_id
         )
     if fecha_desde is not None:
-        q = q.filter(func.coalesce(Evento.fecha_ocurrencia, Evento.fecha_creacion) >= fecha_desde)
+        q = q.filter(Evento.fecha_ocurrencia >= fecha_desde)
     if fecha_hasta is not None:
-        q = q.filter(func.coalesce(Evento.fecha_ocurrencia, Evento.fecha_creacion) <= fecha_hasta)
+        q = q.filter(Evento.fecha_ocurrencia <= fecha_hasta)
 
     return q.order_by(Evento.fecha_creacion.desc()).all()

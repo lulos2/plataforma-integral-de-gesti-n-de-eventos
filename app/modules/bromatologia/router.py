@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
-from app.core.deps import get_current_user
+from app.core.deps import require_permissions, verificar_acceso_area
 from app.database.session import get_db
 from app.modules.events import crud as events_crud
 from app.modules.events.presenter import to_evento_response
@@ -18,8 +18,10 @@ def crear_evento_bromatologia(
     tipo: str,
     data: EventoBromatologiaCreate,
     db: Session = Depends(get_db),
-    usuario=Depends(get_current_user),
+    usuario=Depends(require_permissions("eventos:write")),
 ):
+    verificar_acceso_area(usuario, "bromatologia")
+
     try:
         creado = crud.crear_evento_bromatologia(db, tipo_nombre=tipo, data=data, actor_usuario_id=usuario.id)
     except ValueError as e:
