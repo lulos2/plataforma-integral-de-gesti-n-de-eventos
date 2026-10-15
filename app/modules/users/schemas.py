@@ -1,5 +1,5 @@
-from datetime import datetime
 import re
+from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict, field_validator
 
@@ -110,14 +110,6 @@ class UsuarioMeResponse(UsuarioResponse):
 class ForgotPasswordRequest(RequestModel):
     username: str | None = None
     email: str | None = None
-
-
-class ForgotPasswordResponse(ResponseModel):
-    mensaje: str
-    # Solo presente en modo demo/desarrollo: en producción esto se manda por
-    # email y nunca se devuelve en la respuesta de la API.
-    reset_token: str
-    expira_en: datetime
 
 
 class ResetPasswordRequest(RequestModel):

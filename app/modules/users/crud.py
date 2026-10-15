@@ -1,12 +1,17 @@
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 from sqlalchemy.orm import Session
 
-from app.modules.users.models import PasswordResetToken, Permission, Rol, Usuario
 from app.core.config import get_settings
-from app.core.security import generate_reset_token, get_password_hash, hash_reset_token, verify_password
-from app.modules.users.schemas import RolCreate, UsuarioCreate
+from app.core.security import (
+    generate_reset_token,
+    get_password_hash,
+    hash_reset_token,
+    verify_password,
+)
+from app.modules.users.models import PasswordResetToken, Permission, Rol, Usuario
 from app.modules.users.permissions import PermissionCode
+from app.modules.users.schemas import RolCreate, UsuarioCreate
 
 
 def crear_rol(db: Session, data: RolCreate) -> Rol:
@@ -211,7 +216,7 @@ def solicitar_reset_password(
     ).delete()
 
     raw_token = generate_reset_token()
-    expira_en = datetime.now(timezone.utc) + timedelta(minutes=get_settings().reset_token_expire_minutes)
+    expira_en = datetime.now(UTC) + timedelta(minutes=get_settings().reset_token_expire_minutes)
 
     db.add(
         PasswordResetToken(
@@ -226,27 +231,41 @@ def solicitar_reset_password(
 
 
 def resetear_password(db: Session, *, token: str, password_nueva: str) -> Usuario:
-    registro = (
-        db.query(PasswordResetToken)
-        .filter(PasswordResetToken.token_hash == hash_reset_token(token))
-        .first()
-    )
-    if not registro:
-        raise ValueError("token invalido")
-    if registro.usado_en is not None:
-        raise ValueError("token ya utilizado")
-    if registro.expira_en < datetime.now(timezone.utc):
-        raise ValueError("token expirado")
+    # Solo uso interno hasta implementar entrega segura; las rutas publicas estan deshabilitadas.
+    try:
+        registro = (
+            db.query(PasswordResetToken)
+            .filter(PasswordResetToken.token_hash == hash_reset_token(token))
+            .populate_existing()
+            .with_for_update()
+            .first()
+        )
+        if not registro:
+            raise ValueError("token invalido")
+        if registro.usado_en is not None:
+            raise ValueError("token ya utilizado")
+        if registro.expira_en <= datetime.now(UTC):
+            raise ValueError("token expirado")
 
-    usuario = obtener_usuario_por_id(db, registro.usuario_id)
-    if not usuario:
-        raise ValueError("token invalido")
+        usuario = (
+            db.query(Usuario)
+            .filter(Usuario.id == registro.usuario_id)
+            .populate_existing()
+            .with_for_update()
+            .first()
+        )
+        if not usuario or not usuario.activo:
+            raise ValueError("token invalido")
 
-    usuario.password_hash = get_password_hash(password_nueva)
-    registro.usado_en = datetime.now(timezone.utc)
+        usuario.password_hash = get_password_hash(password_nueva)
+        usuario.session_version += 1
+        registro.usado_en = datetime.now(UTC)
 
-    db.add(usuario)
-    db.add(registro)
-    db.commit()
+        db.add(usuario)
+        db.add(registro)
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise
     db.refresh(usuario)
     return usuario

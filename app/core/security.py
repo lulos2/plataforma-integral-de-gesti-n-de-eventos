@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import secrets
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 from jose import JWTError, jwt
 from passlib.context import CryptContext
@@ -27,23 +27,34 @@ def _get_secret_key() -> str:
     return get_settings().secret_key
 
 
-def create_access_token(*, subject: str, expires_minutes: int | None = None) -> str:
+def create_access_token(
+    *, subject: str, session_version: int = 0, expires_minutes: int | None = None
+) -> str:
     if expires_minutes is None:
         expires_minutes = get_settings().access_token_expire_minutes
 
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     expire = now + timedelta(minutes=expires_minutes)
-    payload = {"sub": subject, "iat": int(now.timestamp()), "exp": expire}
+    payload = {
+        "sub": subject,
+        "iat": int(now.timestamp()),
+        "exp": expire,
+        "session_version": session_version,
+    }
     return jwt.encode(payload, _get_secret_key(), algorithm=ALGORITHM)
 
 
-def decode_token_subject(token: str) -> str | None:
+def decode_access_token(token: str) -> dict | None:
     try:
-        payload = jwt.decode(token, _get_secret_key(), algorithms=[ALGORITHM])
+        payload = jwt.decode(
+            token, _get_secret_key(), algorithms=[ALGORITHM], options={"require_exp": True}
+        )
     except JWTError:
         return None
-    sub = payload.get("sub")
-    return sub if isinstance(sub, str) else None
+    version = payload.get("session_version")
+    if not isinstance(payload.get("sub"), str) or type(version) is not int or version < 0:
+        return None
+    return payload
 
 
 def generate_reset_token() -> str:

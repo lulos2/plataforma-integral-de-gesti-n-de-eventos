@@ -125,3 +125,15 @@ Authorization: Bearer {{TOKEN}}
 # Solo adminDios: borrado lógico (setea activo=false, no elimina fila)
 DELETE http://127.0.0.1:8000/usuarios/{{USER_ID}}
 Authorization: Bearer {{TOKEN}}
+
+###
+
+# El autor se obtiene del token. No enviar actor_usuario_id en el body (422).
+POST http://127.0.0.1:8000/eventos/{{EVENTO_ID}}/intervenciones
+Content-Type: application/json
+Authorization: Bearer {{TOKEN}}
+
+{
+  "servicio_actuante_id": {{SERVICIO_ACTUANTE_ID}},
+  "notas": "Intervencion registrada por el usuario autenticado"
+}

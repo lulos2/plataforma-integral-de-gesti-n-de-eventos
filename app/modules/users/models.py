@@ -1,11 +1,10 @@
 from __future__ import annotations
 
-from sqlalchemy import Column, ForeignKey, Integer, String, Boolean, DateTime, Text, Table
-from sqlalchemy.sql import func
+from sqlalchemy import Boolean, Column, DateTime, ForeignKey, Integer, String, Table, Text
 from sqlalchemy.orm import relationship
+from sqlalchemy.sql import func
 
 from app.database.base import Base
-
 
 role_permissions = Table(
     "role_permissions",
@@ -52,6 +51,7 @@ class Usuario(Base):
     area = Column(String, nullable=True, index=True)
     # Nullable for backwards compatibility if the table already existed.
     password_hash = Column(Text, nullable=True)
+    session_version = Column(Integer, nullable=False, default=0, server_default="0")
 
     roles = relationship("Rol", secondary=user_roles, back_populates="users", lazy="selectin")
 

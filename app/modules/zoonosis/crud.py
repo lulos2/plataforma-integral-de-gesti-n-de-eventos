@@ -55,18 +55,25 @@ def actualizar_evento_zoonosis(
 
     detalle: dict = {}
 
-    for campo in ("especie", "propietario", "observaciones", "requiere_control_antirrabico"):
-        nuevo = getattr(data, campo)
-        if nuevo is not None and nuevo != getattr(registro, campo):
-            detalle[campo] = {"from": getattr(registro, campo), "to": nuevo}
-            setattr(registro, campo, nuevo)
+    try:
+        for campo, nuevo in data.model_dump(exclude_unset=True).items():
+            if nuevo != getattr(registro, campo):
+                detalle[campo] = {"from": getattr(registro, campo), "to": nuevo}
+                setattr(registro, campo, nuevo)
 
-    db.add(registro)
-    db.commit()
-    db.refresh(registro)
-
-    if detalle:
-        events_crud._crear_audit(db, evento_id=evento_id, actor_usuario_id=actor_usuario_id, accion="update", detalle=detalle)
+        db.add(registro)
+        if detalle:
+            events_crud._crear_audit(
+                db,
+                evento_id=evento_id,
+                actor_usuario_id=actor_usuario_id,
+                accion="update",
+                detalle=detalle,
+            )
         db.commit()
+    except Exception:
+        db.rollback()
+        raise
 
+    db.refresh(registro)
     return registro

@@ -31,6 +31,12 @@ async def lifespan(_: FastAPI):
     if engine.dialect.name == "postgresql":
         with engine.begin() as conn:
             conn.execute(text("ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS password_hash TEXT"))
+            conn.execute(
+                text(
+                    "ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS "
+                    "session_version INTEGER NOT NULL DEFAULT 0"
+                )
+            )
             conn.execute(text("ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS nombre VARCHAR"))
             conn.execute(text("ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS apellido VARCHAR"))
             conn.execute(text("ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS area VARCHAR"))
