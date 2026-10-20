@@ -79,6 +79,7 @@ def crear_usuario(db: Session, data: UsuarioCreate) -> Usuario:
         nombre=data.nombre,
         apellido=data.apellido,
         area=data.area,
+        turno=data.turno,
         password_hash=get_password_hash(data.password),
     )
     usuario.roles = roles
@@ -88,27 +89,42 @@ def crear_usuario(db: Session, data: UsuarioCreate) -> Usuario:
     return usuario
 
 
-def listar_usuarios(db: Session) -> list[Usuario]:
-    return db.query(Usuario).order_by(Usuario.id.desc()).all()
+def obtener_roles_por_ids(db: Session, rol_ids: list[int]) -> list[Rol]:
+    return db.query(Rol).filter(Rol.id.in_(rol_ids)).all()
 
 
-def eliminar_usuario(db: Session, *, usuario_id: int) -> Usuario | None:
+def listar_usuarios(db: Session, *, area: str | None = None) -> list[Usuario]:
+    q = db.query(Usuario)
+    if area:
+        q = q.filter(Usuario.area == area)
+    return q.order_by(Usuario.id.desc()).all()
+
+
+def actualizar_activo_usuario(db: Session, *, usuario_id: int, activo: bool) -> Usuario | None:
     usuario = db.query(Usuario).filter(Usuario.id == usuario_id).first()
     if not usuario:
         return None
 
     role_names = {r.nombre for r in (getattr(usuario, "roles", None) or [])}
-    if "adminDios" in role_names:
-        raise ValueError("no se puede eliminar un usuario con rol adminDios")
+    if not activo and "adminDios" in role_names:
+        raise ValueError("no se puede desactivar un usuario con rol adminDios")
 
-    if not usuario.activo:
+    if usuario.activo == activo:
         return usuario
 
-    usuario.activo = False
+    usuario.activo = activo
+    if not activo:
+        # Invalida las sesiones abiertas: si despues se reactiva la cuenta, los tokens viejos no revivan.
+        usuario.session_version += 1
     db.add(usuario)
     db.commit()
     db.refresh(usuario)
     return usuario
+
+
+def eliminar_usuario(db: Session, *, usuario_id: int) -> Usuario | None:
+    # Las cuentas no se borran: "eliminar" las desactiva.
+    return actualizar_activo_usuario(db, usuario_id=usuario_id, activo=False)
 
 
 def eliminar_rol(db: Session, *, rol_id: int) -> bool:
@@ -167,6 +183,18 @@ def actualizar_area_usuario(db: Session, *, usuario_id: int, area: str | None) -
         return None
 
     usuario.area = area
+    db.add(usuario)
+    db.commit()
+    db.refresh(usuario)
+    return usuario
+
+
+def actualizar_turno_usuario(db: Session, *, usuario_id: int, turno: str | None) -> Usuario | None:
+    usuario = db.query(Usuario).filter(Usuario.id == usuario_id).first()
+    if not usuario:
+        return None
+
+    usuario.turno = turno
     db.add(usuario)
     db.commit()
     db.refresh(usuario)

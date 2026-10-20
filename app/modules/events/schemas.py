@@ -2,6 +2,7 @@ from pydantic import BaseModel, ConfigDict, field_validator
 from datetime import datetime
 
 from app.core.serialization import ARGENTINA_TZ, ArgentinaResponseModel
+from app.core.turnos import validar_turno as _validar_turno
 
 
 class RequestModel(BaseModel):
@@ -74,6 +75,11 @@ class EventoBase(RequestModel):
     def _check_fecha_ocurrencia(cls, value: datetime) -> datetime:
         return _fecha_con_zona(value)
 
+    @field_validator("turno")
+    @classmethod
+    def _check_turno(cls, value: str | None) -> str | None:
+        return _validar_turno(value)
+
     @field_validator("origen")
     @classmethod
     def _check_origen(cls, value: str | None) -> str | None:
@@ -103,6 +109,11 @@ class EventoCommonCreate(RequestModel):
     @classmethod
     def _check_fecha_ocurrencia(cls, value: datetime) -> datetime:
         return _fecha_con_zona(value)
+
+    @field_validator("turno")
+    @classmethod
+    def _check_turno(cls, value: str | None) -> str | None:
+        return _validar_turno(value)
 
     @field_validator("origen")
     @classmethod
@@ -161,7 +172,15 @@ class EventoUpdate(RequestModel):
     @field_validator("fecha_ocurrencia")
     @classmethod
     def _check_fecha_ocurrencia(cls, value: datetime | None) -> datetime | None:
+        # Si no se quiere cambiar, se omite el campo. Mandar null explicito se rechaza.
+        if value is None:
+            raise ValueError("fecha_ocurrencia no puede ser null; omitirla para conservar la actual")
         return _fecha_con_zona(value)
+
+    @field_validator("turno")
+    @classmethod
+    def _check_turno(cls, value: str | None) -> str | None:
+        return _validar_turno(value)
 
     @field_validator("origen")
     @classmethod
@@ -172,6 +191,49 @@ class EventoUpdate(RequestModel):
     @classmethod
     def _check_estado(cls, value: str | None) -> str | None:
         return _validar_estado(value)
+
+
+class MotivoRequest(RequestModel):
+    motivo: str
+
+    @field_validator("motivo")
+    @classmethod
+    def _check_motivo(cls, value: str) -> str:
+        motivo = value.strip()
+        if not motivo:
+            raise ValueError("el motivo no puede estar vacio")
+        return motivo
+
+
+class CierreResponse(ResponseModel):
+    # "sistema": cerrado en la aplicacion. "historico": tomado del registro en papel.
+    origen: str | None = None
+    usuario_id: int | None = None
+    nombre: str | None = None
+    apellido: str | None = None
+    fecha: datetime | None = None
+    observaciones: str | None = None
+
+
+class AnulacionResponse(ResponseModel):
+    usuario_id: int | None = None
+    nombre: str | None = None
+    apellido: str | None = None
+    fecha: datetime | None = None
+    motivo: str | None = None
+
+
+class AuditResponse(ResponseModel):
+    id: int
+    evento_id: int
+    accion: str
+    usuario_id: int
+    usuario_nombre: str | None = None
+    usuario_apellido: str | None = None
+    area: str | None = None
+    turno: str | None = None
+    fecha: datetime | None = None
+    detalle: dict | None = None
 
 
 class EventoResponse(ResponseModel):
@@ -201,6 +263,10 @@ class EventoResponse(ResponseModel):
     fecha_cierre: datetime | None = None
     cerrado_por_id: int | None = None
     observaciones_cierre: str | None = None
+    # Mismo dato de cierre en un solo objeto (null si el evento no esta cerrado).
+    cierre: CierreResponse | None = None
+    # Solo presente si el evento esta anulado.
+    anulacion: AnulacionResponse | None = None
 
     # Datos propios del Centro de Monitoreo (solo presentes si area == "videoseguridad")
     servicio_actuante: str | None = None

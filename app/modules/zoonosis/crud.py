@@ -32,7 +32,6 @@ def crear_evento_zoonosis(
                 requiere_control_antirrabico=data.requiere_control_antirrabico,
             )
         )
-        events_crud._crear_audit(db, evento_id=evento.id, actor_usuario_id=actor_usuario_id, accion="create")
         db.commit()
     except Exception:
         db.rollback()

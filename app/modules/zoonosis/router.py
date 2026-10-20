@@ -41,6 +41,7 @@ def actualizar_evento_zoonosis(
     existente = events_crud.obtener_evento(db, evento_id)
     if existente:
         verificar_acceso_area(usuario, existente.tipo_evento.area)
+        events_crud.verificar_no_anulado(existente)
 
     try:
         actualizado = crud.actualizar_evento_zoonosis(

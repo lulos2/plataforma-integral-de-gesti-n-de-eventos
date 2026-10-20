@@ -1,17 +1,26 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
-from app.core.deps import require_admin_dios, require_permissions
+from app.core.deps import (
+    es_admin_dios,
+    require_admin_dios,
+    require_permissions,
+    resolver_area_consulta,
+    verificar_acceso_area,
+    verificar_gestion_usuario,
+)
 from app.database.session import get_db
 from app.modules.users import crud
 from app.modules.users.schemas import (
     PermissionResponse,
     RolCreate,
     RolResponse,
+    UsuarioActivoUpdate,
     UsuarioAreaUpdate,
     UsuarioCreate,
     UsuarioRolesUpdate,
     UsuarioResponse,
+    UsuarioTurnoUpdate,
 )
 
 
@@ -65,8 +74,19 @@ def listar_permisos(
 def crear_usuario(
     data: UsuarioCreate,
     db: Session = Depends(get_db),
-    _actor=Depends(require_admin_dios),
+    actor=Depends(require_permissions("users:write")),
 ):
+    if not es_admin_dios(actor):
+        # El administrador de area solo crea operadores y siempre dentro de su propia area.
+        if not actor.area:
+            raise HTTPException(status_code=403, detail="El usuario no tiene un area asignada")
+        if data.area and data.area != actor.area:
+            raise HTTPException(status_code=403, detail="Solo puede crear usuarios de su area")
+        roles = crud.obtener_roles_por_ids(db, data.rol_ids)
+        if any(r.nombre != "operador" for r in roles):
+            raise HTTPException(status_code=403, detail="Solo puede crear cuentas de operadores")
+        data = data.model_copy(update={"area": actor.area})
+
     try:
         return crud.crear_usuario(db, data)
     except ValueError as e:
@@ -76,20 +96,23 @@ def crear_usuario(
 @router.get("/", response_model=list[UsuarioResponse])
 def listar_usuarios(
     db: Session = Depends(get_db),
-    _actor=Depends(require_permissions("users:read")),
+    actor=Depends(require_permissions("users:read")),
+    area: str | None = None,
 ):
-    return crud.listar_usuarios(db)
+    # Quien no ve todas las areas solo lista los usuarios de la suya.
+    return crud.listar_usuarios(db, area=resolver_area_consulta(actor, area))
 
 
 @router.get("/{usuario_id}", response_model=UsuarioResponse)
 def obtener_usuario(
     usuario_id: int,
     db: Session = Depends(get_db),
-    _actor=Depends(require_permissions("users:read")),
+    actor=Depends(require_permissions("users:read")),
 ):
     usuario = crud.obtener_usuario_por_id(db, usuario_id)
     if not usuario:
         raise HTTPException(status_code=404, detail="Usuario no encontrado")
+    verificar_acceso_area(actor, usuario.area)
     return usuario
 
 
@@ -122,18 +145,50 @@ def actualizar_area_usuario(
     return usuario
 
 
+def _usuario_administrable(db: Session, actor, usuario_id: int):
+    usuario = crud.obtener_usuario_por_id(db, usuario_id)
+    if not usuario:
+        raise HTTPException(status_code=404, detail="Usuario no encontrado")
+    verificar_gestion_usuario(actor, usuario)
+    return usuario
+
+
+@router.patch("/{usuario_id}/turno", response_model=UsuarioResponse)
+def actualizar_turno_usuario(
+    usuario_id: int,
+    data: UsuarioTurnoUpdate,
+    db: Session = Depends(get_db),
+    actor=Depends(require_permissions("users:write")),
+):
+    _usuario_administrable(db, actor, usuario_id)
+    return crud.actualizar_turno_usuario(db, usuario_id=usuario_id, turno=data.turno)
+
+
+@router.patch("/{usuario_id}/activo", response_model=UsuarioResponse)
+def actualizar_activo_usuario(
+    usuario_id: int,
+    data: UsuarioActivoUpdate,
+    db: Session = Depends(get_db),
+    actor=Depends(require_permissions("users:write")),
+):
+    _usuario_administrable(db, actor, usuario_id)
+    try:
+        usuario = crud.actualizar_activo_usuario(db, usuario_id=usuario_id, activo=data.activo)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    return usuario
+
+
 @router.delete("/{usuario_id}", response_model=UsuarioResponse)
 def eliminar_usuario(
     usuario_id: int,
     db: Session = Depends(get_db),
-    _actor=Depends(require_admin_dios),
+    actor=Depends(require_permissions("users:write")),
 ):
+    _usuario_administrable(db, actor, usuario_id)
     try:
         eliminado = crud.eliminar_usuario(db, usuario_id=usuario_id)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
-
-    if not eliminado:
-        raise HTTPException(status_code=404, detail="Usuario no encontrado")
 
     return eliminado

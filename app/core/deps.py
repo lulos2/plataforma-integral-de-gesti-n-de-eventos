@@ -13,6 +13,7 @@ from app.modules.users.permissions import PermissionCode
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/token")
 ADMIN_DIOS_ROLE_NAME = "adminDios"
+OPERADOR_ROLE_NAME = "operador"
 
 
 def get_current_user(
@@ -108,6 +109,31 @@ def resolver_area_consulta(usuario: Usuario, area: str | None) -> str | None:
         return area
     verificar_acceso_area(usuario, area or usuario.area)
     return usuario.area
+
+
+def es_admin_dios(usuario: Usuario) -> bool:
+    return _is_admin_dios(usuario)
+
+
+def verificar_gestion_usuario(actor: Usuario, objetivo: Usuario) -> None:
+    """
+    Corta con 403 si el actor no puede administrar la cuenta del objetivo.
+
+    adminDios administra cualquier cuenta. Un administrador de area solo administra operadores
+    de su propia area.
+    """
+    if _is_admin_dios(actor):
+        return
+    if not actor.area or objetivo.area != actor.area:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Solo puede administrar usuarios de su area",
+        )
+    if any(getattr(r, "nombre", None) != OPERADOR_ROLE_NAME for r in objetivo.roles):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Solo puede administrar cuentas de operadores",
+        )
 
 
 def require_permissions(*required: str):

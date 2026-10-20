@@ -21,7 +21,7 @@ def crear_evento_bromatologia(
         if not comercio:
             raise ValueError("comercio_id invalido")
 
-    with db.begin():
+    try:
         evento, _ = events_crud.crear_evento_base(
             db,
             tipo_evento_id=tipo.id,
@@ -37,7 +37,10 @@ def crear_evento_bromatologia(
                 observaciones=data.observaciones,
             )
         )
-        events_crud._crear_audit(db, evento_id=evento.id, actor_usuario_id=actor_usuario_id, accion="create")
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise
 
     db.refresh(evento)
     return evento

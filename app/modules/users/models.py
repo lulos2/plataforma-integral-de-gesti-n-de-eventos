@@ -49,6 +49,8 @@ class Usuario(Base):
     # Area a la que pertenece (videoseguridad | zoonosis | bromatologia). Limita los datos que ve,
     # salvo que tenga el permiso areas:all. Sin area asignada no accede a datos de ningun area.
     area = Column(String, nullable=True, index=True)
+    # Turno laboral (matutino | vespertino | nocturno). Se copia a la auditoria de cada operacion.
+    turno = Column(String, nullable=True)
     # Nullable for backwards compatibility if the table already existed.
     password_hash = Column(Text, nullable=True)
     session_version = Column(Integer, nullable=False, default=0, server_default="0")

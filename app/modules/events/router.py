@@ -6,10 +6,12 @@ from sqlalchemy.orm import Session
 from app.database.session import get_db
 from app.core.deps import require_permissions, resolver_area_consulta, verificar_acceso_area
 from app.modules.events import crud
-from app.modules.events.presenter import to_evento_response
+from app.modules.events.presenter import to_audit_response, to_evento_response
 from app.modules.users.models import Usuario
 from .schemas import (
+    AuditResponse,
     EstadisticasResponse,
+    MotivoRequest,
     PuntoMapa,
     EventoResponse,
     EventoUpdate,
@@ -169,20 +171,55 @@ def actualizar_evento(
     return to_evento_response(evento)
 
 
-@router.delete("/{evento_id}")
-def eliminar_evento(
+# Los eventos no se eliminan: se anulan (queda el registro con su numero e historial).
+@router.post("/{evento_id}/anular", response_model=EventoResponse)
+def anular_evento(
     evento_id: int,
+    data: MotivoRequest,
     db: Session = Depends(get_db),
     usuario=Depends(require_permissions("eventos:anular")),
 ):
     _evento_autorizado(db, usuario, evento_id)
 
-    evento = crud.eliminar_evento(db, evento_id=evento_id, actor_usuario_id=usuario.id)
+    try:
+        evento = crud.anular_evento(db, evento_id, motivo=data.motivo, actor_usuario_id=usuario.id)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
     if not evento:
         raise HTTPException(status_code=404, detail="Evento no encontrado")
 
-    return {"mensaje": "Evento eliminado"}
+    return to_evento_response(evento)
+
+
+@router.post("/{evento_id}/reabrir", response_model=EventoResponse)
+def reabrir_evento(
+    evento_id: int,
+    data: MotivoRequest,
+    db: Session = Depends(get_db),
+    usuario=Depends(require_permissions("eventos:reabrir")),
+):
+    _evento_autorizado(db, usuario, evento_id)
+
+    try:
+        evento = crud.reabrir_evento(db, evento_id, motivo=data.motivo, actor_usuario_id=usuario.id)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    if not evento:
+        raise HTTPException(status_code=404, detail="Evento no encontrado")
+
+    return to_evento_response(evento)
+
+
+@router.get("/{evento_id}/historial", response_model=list[AuditResponse])
+def historial_evento(
+    evento_id: int,
+    db: Session = Depends(get_db),
+    usuario=Depends(require_permissions("eventos:read")),
+):
+    _evento_autorizado(db, usuario, evento_id)
+    return [to_audit_response(a) for a in crud.listar_historial(db, evento_id=evento_id)]
 
 
 @router.post("/{evento_id}/intervenciones", response_model=IntervencionResponse)

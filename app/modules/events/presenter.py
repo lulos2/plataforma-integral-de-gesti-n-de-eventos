@@ -1,10 +1,29 @@
-from app.modules.events.schemas import EventoResponse
+from app.modules.events.schemas import AnulacionResponse, AuditResponse, CierreResponse, EventoResponse
 
 
 def to_evento_response(evento) -> EventoResponse:
     tipo = getattr(evento, "tipo_evento", None)
     vs = getattr(evento, "videoseguridad", None)
     zoo = getattr(evento, "zoonosis", None)
+    cierre = None
+    if evento.estado == "cerrado":
+        cierre = CierreResponse(
+            origen=evento.cierre_origen,
+            usuario_id=evento.cerrado_por_id,
+            nombre=evento.cierre_nombre,
+            apellido=evento.cierre_apellido,
+            fecha=evento.fecha_cierre,
+            observaciones=evento.observaciones_cierre,
+        )
+    anulacion = None
+    if evento.estado == "anulado":
+        anulacion = AnulacionResponse(
+            usuario_id=evento.anulado_por_id,
+            nombre=evento.anulado_por_nombre,
+            apellido=evento.anulado_por_apellido,
+            fecha=evento.fecha_anulacion,
+            motivo=evento.motivo_anulacion,
+        )
     return EventoResponse(
         id=evento.id,
         area=tipo.area if tipo else "",
@@ -28,6 +47,8 @@ def to_evento_response(evento) -> EventoResponse:
         fecha_cierre=evento.fecha_cierre,
         cerrado_por_id=evento.cerrado_por_id,
         observaciones_cierre=evento.observaciones_cierre,
+        cierre=cierre,
+        anulacion=anulacion,
         servicio_actuante=vs.servicio_actuante.nombre if vs and vs.servicio_actuante else None,
         servicio_actuante_id=vs.servicio_actuante_id if vs else None,
         camara=vs.camara.codigo if vs and vs.camara else None,
@@ -41,3 +62,19 @@ def to_evento_response(evento) -> EventoResponse:
         requiere_control_antirrabico=zoo.requiere_control_antirrabico if zoo else None,
     )
 
+
+
+def to_audit_response(registro) -> AuditResponse:
+    actor = registro.actor_usuario
+    return AuditResponse(
+        id=registro.id,
+        evento_id=registro.evento_id,
+        accion=registro.accion,
+        usuario_id=registro.actor_usuario_id,
+        usuario_nombre=actor.nombre if actor else None,
+        usuario_apellido=actor.apellido if actor else None,
+        area=registro.actor_area,
+        turno=registro.actor_turno,
+        fecha=registro.fecha,
+        detalle=registro.detalle,
+    )

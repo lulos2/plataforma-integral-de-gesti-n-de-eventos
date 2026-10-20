@@ -139,6 +139,7 @@ def listar_eventos_en_poligono(
         .options(joinedload(Evento.tipo_evento))
         .join(Poligono, Poligono.id == poligono_id)
         .filter(func.ST_Covers(Poligono.geometria, Evento.ubicacion))
+        .filter(Evento.estado != "anulado")
     )
 
     if area:

@@ -5,6 +5,7 @@ from pydantic import BaseModel, ConfigDict, field_validator
 
 from app.core.areas import validar_area
 from app.core.serialization import ArgentinaResponseModel
+from app.core.turnos import validar_turno
 
 
 class RequestModel(BaseModel):
@@ -43,11 +44,17 @@ class UsuarioCreate(RequestModel):
     rol_ids: list[int]
     password: str
     area: str | None = None
+    turno: str | None = None
 
     @field_validator("area")
     @classmethod
     def validar_area_usuario(cls, value: str | None) -> str | None:
         return validar_area(value)
+
+    @field_validator("turno")
+    @classmethod
+    def validar_turno_usuario(cls, value: str | None) -> str | None:
+        return validar_turno(value)
 
     @field_validator("email")
     @classmethod
@@ -88,6 +95,20 @@ class UsuarioAreaUpdate(RequestModel):
         return validar_area(value)
 
 
+class UsuarioActivoUpdate(RequestModel):
+    activo: bool
+
+
+class UsuarioTurnoUpdate(RequestModel):
+    # null deja al usuario sin turno asignado.
+    turno: str | None
+
+    @field_validator("turno")
+    @classmethod
+    def validar_turno_usuario(cls, value: str | None) -> str | None:
+        return validar_turno(value)
+
+
 class UsuarioResponse(ResponseModel):
     id: int
     username: str
@@ -95,6 +116,7 @@ class UsuarioResponse(ResponseModel):
     nombre: str | None = None
     apellido: str | None = None
     area: str | None = None
+    turno: str | None = None
     roles: list[RolResponse] = []
     activo: bool
     fecha_creacion: datetime

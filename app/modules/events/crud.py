@@ -9,9 +9,14 @@ from sqlalchemy.orm import joinedload
 from geoalchemy2.shape import from_shape
 from shapely.geometry import Point
 
-from app.core.serialization import ARGENTINA_TZ
+from app.core.serialization import ARGENTINA_TZ, to_argentina_iso
 from app.modules.events.models import Evento, EventoAudit, TipoEvento
 from app.modules.events.models_domain import EventoIntervencion, EventoVideoseguridad, EventoZoonosis, ServicioActuante
+from app.modules.users.models import Usuario
+
+
+class EventoAnuladoError(Exception):
+    """El evento esta anulado: se conserva pero ya no admite cambios."""
 
 
 class _EventoBaseData(Protocol):
@@ -38,15 +43,42 @@ def _patron_like(texto: str) -> str:
     return f"%{escapado}%"
 
 
+def _a_json(valor):
+    # El detalle de auditoria se guarda como JSON: las fechas se pasan a texto en hora argentina.
+    if isinstance(valor, datetime):
+        return to_argentina_iso(valor)
+    if isinstance(valor, dict):
+        return {k: _a_json(v) for k, v in valor.items()}
+    if isinstance(valor, (list, tuple)):
+        return [_a_json(v) for v in valor]
+    return valor
+
+
+def _obtener_actor(db: Session, actor_usuario_id: int) -> Usuario:
+    actor = db.query(Usuario).filter(Usuario.id == actor_usuario_id).first()
+    if not actor:
+        raise ValueError("usuario invalido")
+    return actor
+
+
 def _crear_audit(db: Session, *, evento_id: int, actor_usuario_id: int, accion: str, detalle: dict | None = None):
+    # No hace commit: la auditoria se guarda en la misma transaccion que el cambio que registra.
+    actor = _obtener_actor(db, actor_usuario_id)
     db.add(
         EventoAudit(
             evento_id=evento_id,
             actor_usuario_id=actor_usuario_id,
+            actor_area=actor.area,
+            actor_turno=actor.turno,
             accion=accion,
-            detalle=detalle,
+            detalle=_a_json(detalle),
         )
     )
+
+
+def verificar_no_anulado(evento: Evento) -> None:
+    if evento.estado == "anulado":
+        raise EventoAnuladoError("El evento esta anulado y no admite cambios")
 
 
 def obtener_tipo_evento(db: Session, *, tipo_evento_id: int) -> TipoEvento | None:
@@ -75,6 +107,7 @@ def crear_evento_base(
 
     point = from_shape(Point(data.longitud, data.latitud), srid=4326)
 
+    actor = _obtener_actor(db, actor_usuario_id)
     cerrado = data.estado == "cerrado"
     observaciones_cierre = _limpiar_texto(data.observaciones_cierre)
     if cerrado and not observaciones_cierre:
@@ -99,11 +132,15 @@ def crear_evento_base(
         usuario_id=actor_usuario_id,
         fecha_cierre=datetime.now(ARGENTINA_TZ) if cerrado else None,
         cerrado_por_id=actor_usuario_id if cerrado else None,
+        cierre_origen="sistema" if cerrado else None,
+        cierre_nombre=actor.nombre if cerrado else None,
+        cierre_apellido=actor.apellido if cerrado else None,
         observaciones_cierre=observaciones_cierre,
     )
 
     db.add(evento)
     db.flush()  # assign evento.id without committing
+    _crear_audit(db, evento_id=evento.id, actor_usuario_id=actor_usuario_id, accion="create")
     return evento, tipo
 
 
@@ -143,6 +180,9 @@ def obtener_eventos(
 
     if estado:
         q = q.filter(Evento.estado == estado)
+    else:
+        # Los anulados solo aparecen si se piden explicitamente con estado=anulado.
+        q = q.filter(Evento.estado != "anulado")
 
     if fecha_desde:
         q = q.filter(Evento.fecha_ocurrencia >= fecha_desde)
@@ -213,6 +253,8 @@ def obtener_puntos_mapa(
         )
     if estado:
         q = q.filter(Evento.estado == estado)
+    else:
+        q = q.filter(Evento.estado != "anulado")
     if turno and turno.strip():
         q = q.filter(func.lower(Evento.turno) == turno.strip().lower())
     if fecha_desde:
@@ -247,7 +289,8 @@ def obtener_estadisticas(db: Session, *, area: str | None = None) -> dict:
     # Los eventos viejos sin fecha_ocurrencia cuentan en los totales pero no en hoy/semana/mes.
     fecha_evento = Evento.fecha_ocurrencia
 
-    q = db.query(Evento)
+    # Los eventos anulados no cuentan en ningun indicador.
+    q = db.query(Evento).filter(Evento.estado != "anulado")
     if area:
         q = q.join(Evento.tipo_evento).filter(TipoEvento.area == area)
 
@@ -263,7 +306,7 @@ def obtener_estadisticas(db: Session, *, area: str | None = None) -> dict:
     cantidad = func.count(Evento.id)
     q_tipos = db.query(TipoEvento.area, TipoEvento.nombre, cantidad).join(
         Evento, Evento.tipo_evento_id == TipoEvento.id
-    )
+    ).filter(Evento.estado != "anulado")
     if area:
         q_tipos = q_tipos.filter(TipoEvento.area == area)
     filas = (
@@ -306,6 +349,7 @@ def crear_intervencion(db: Session, *, evento_id: int, data, actor_usuario_id: i
     evento = db.query(Evento).filter(Evento.id == evento_id).first()
     if not evento:
         return None
+    verificar_no_anulado(evento)
 
     servicio = db.query(ServicioActuante).filter(ServicioActuante.id == data.servicio_actuante_id).first()
     if not servicio:
@@ -337,87 +381,187 @@ def listar_intervenciones(db: Session, *, evento_id: int):
     )
 
 
+def _bloquear_evento(db: Session, evento_id: int) -> Evento | None:
+    # Bloquea la fila hasta el commit, para que dos pedidos simultaneos sobre el mismo evento no se pisen.
+    return db.query(Evento).filter(Evento.id == evento_id).populate_existing().with_for_update().first()
+
+
+def _cierre_actual(evento: Evento) -> dict:
+    return {
+        "origen": evento.cierre_origen,
+        "usuario_id": evento.cerrado_por_id,
+        "nombre": evento.cierre_nombre,
+        "apellido": evento.cierre_apellido,
+        "fecha": evento.fecha_cierre,
+        "observaciones": evento.observaciones_cierre,
+    }
+
+
 def actualizar_evento(db: Session, evento_id: int, data, *, actor_usuario_id: int):
+    try:
+        evento = _bloquear_evento(db, evento_id)
+        if not evento:
+            return None
+        verificar_no_anulado(evento)
+        actor = _obtener_actor(db, actor_usuario_id)
 
-    evento = db.query(Evento).filter(Evento.id == evento_id).first()
-    if not evento:
-        return None
+        # Se valida todo lo del cierre antes de modificar nada.
+        estado_antes = evento.estado
+        estado_nuevo = data.estado if data.estado is not None else estado_antes
+        observaciones_cierre = _limpiar_texto(data.observaciones_cierre)
+        cierra = estado_nuevo == "cerrado" and estado_antes != "cerrado"
 
-    # Se valida todo lo del cierre antes de modificar nada.
-    estado_antes = evento.estado
-    estado_nuevo = data.estado if data.estado is not None else estado_antes
-    observaciones_cierre = _limpiar_texto(data.observaciones_cierre)
-    cierra = estado_nuevo == "cerrado" and estado_antes != "cerrado"
-    reabre = estado_nuevo == "abierto" and estado_antes == "cerrado"
+        if estado_antes == "cerrado" and estado_nuevo == "abierto":
+            raise ValueError("para reabrir un evento cerrado usar POST /eventos/{id}/reabrir")
+        if cierra and not observaciones_cierre:
+            raise ValueError("observaciones_cierre es obligatoria para cerrar un evento")
+        if observaciones_cierre and estado_nuevo != "cerrado":
+            raise ValueError("observaciones_cierre solo se puede indicar en un evento cerrado")
 
-    if cierra and not observaciones_cierre:
-        raise ValueError("observaciones_cierre es obligatoria para cerrar un evento")
-    if observaciones_cierre and estado_nuevo != "cerrado":
-        raise ValueError("observaciones_cierre solo se puede indicar en un evento cerrado")
+        detalle = {}
 
-    detalle = {}
+        for campo in (
+            "descripcion",
+            "fuente",
+            "estado",
+            "fecha_ocurrencia",
+            "turno",
+            "direccion",
+            "origen",
+            "recibio_nombre",
+            "recibio_funcion",
+        ):
+            nuevo = getattr(data, campo)
+            if nuevo is not None and nuevo != getattr(evento, campo):
+                detalle[campo] = {"from": getattr(evento, campo), "to": nuevo}
+                setattr(evento, campo, nuevo)
 
-    for campo in (
-        "descripcion",
-        "fuente",
-        "estado",
-        "fecha_ocurrencia",
-        "turno",
-        "direccion",
-        "origen",
-        "recibio_nombre",
-        "recibio_funcion",
-    ):
-        nuevo = getattr(data, campo)
-        if nuevo is not None and nuevo != getattr(evento, campo):
-            detalle[campo] = {"from": getattr(evento, campo), "to": nuevo}
-            setattr(evento, campo, nuevo)
+        if cierra:
+            evento.fecha_cierre = datetime.now(ARGENTINA_TZ)
+            evento.cerrado_por_id = actor.id
+            evento.cierre_origen = "sistema"
+            evento.cierre_nombre = actor.nombre
+            evento.cierre_apellido = actor.apellido
+            evento.observaciones_cierre = observaciones_cierre
+            detalle["cierre"] = {"from": None, "to": _cierre_actual(evento)}
+        elif observaciones_cierre and observaciones_cierre != evento.observaciones_cierre:
+            # Evento que ya estaba cerrado: se corrige solo el texto. El responsable y la fecha
+            # del cierre original no cambian.
+            detalle["observaciones_cierre"] = {"from": evento.observaciones_cierre, "to": observaciones_cierre}
+            evento.observaciones_cierre = observaciones_cierre
 
-    if cierra:
-        evento.fecha_cierre = datetime.now(ARGENTINA_TZ)
-        evento.cerrado_por_id = actor_usuario_id
-        evento.observaciones_cierre = observaciones_cierre
-        detalle["observaciones_cierre"] = {"from": None, "to": observaciones_cierre}
-    elif reabre:
-        detalle["observaciones_cierre"] = {"from": evento.observaciones_cierre, "to": None}
+        if data.latitud is not None or data.longitud is not None:
+            nueva_lat = evento.latitud if data.latitud is None else data.latitud
+            nueva_lon = evento.longitud if data.longitud is None else data.longitud
+            if nueva_lat != evento.latitud or nueva_lon != evento.longitud:
+                detalle["ubicacion"] = {"from": [evento.latitud, evento.longitud], "to": [nueva_lat, nueva_lon]}
+                evento.latitud = nueva_lat
+                evento.longitud = nueva_lon
+                evento.ubicacion = from_shape(Point(nueva_lon, nueva_lat), srid=4326)
+
+        db.add(evento)
+        if detalle:
+            # El cambio y su auditoria se confirman juntos: si una falla, no se guarda ninguna.
+            _crear_audit(
+                db,
+                evento_id=evento.id,
+                actor_usuario_id=actor_usuario_id,
+                accion="cerrar" if cierra else "update",
+                detalle=detalle,
+            )
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise
+
+    return obtener_evento(db, evento_id)
+
+
+def anular_evento(db: Session, evento_id: int, *, motivo: str, actor_usuario_id: int):
+    """Anula el evento (no se borra): conserva numero, datos e historial."""
+    try:
+        evento = _bloquear_evento(db, evento_id)
+        if not evento:
+            return None
+        if evento.estado == "anulado":
+            raise ValueError("el evento ya esta anulado")
+        motivo = _limpiar_texto(motivo)
+        if not motivo:
+            raise ValueError("el motivo es obligatorio")
+        actor = _obtener_actor(db, actor_usuario_id)
+
+        estado_anterior = evento.estado
+        evento.estado = "anulado"
+        evento.fecha_anulacion = datetime.now(ARGENTINA_TZ)
+        evento.anulado_por_id = actor.id
+        evento.anulado_por_nombre = actor.nombre
+        evento.anulado_por_apellido = actor.apellido
+        evento.motivo_anulacion = motivo
+        db.add(evento)
+        _crear_audit(
+            db,
+            evento_id=evento.id,
+            actor_usuario_id=actor_usuario_id,
+            accion="anular",
+            detalle={"estado": {"from": estado_anterior, "to": "anulado"}, "motivo": motivo},
+        )
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise
+
+    return obtener_evento(db, evento_id)
+
+
+def reabrir_evento(db: Session, evento_id: int, *, motivo: str, actor_usuario_id: int):
+    """Reabre un evento cerrado. El cierre anterior no se pierde: queda en el historial."""
+    try:
+        evento = _bloquear_evento(db, evento_id)
+        if not evento:
+            return None
+        verificar_no_anulado(evento)
+        if evento.estado != "cerrado":
+            raise ValueError("solo se puede reabrir un evento cerrado")
+        motivo = _limpiar_texto(motivo)
+        if not motivo:
+            raise ValueError("el motivo es obligatorio")
+
+        cierre_anterior = _cierre_actual(evento)
+        evento.estado = "abierto"
         evento.fecha_cierre = None
         evento.cerrado_por_id = None
+        evento.cierre_origen = None
+        evento.cierre_nombre = None
+        evento.cierre_apellido = None
         evento.observaciones_cierre = None
-    elif observaciones_cierre and observaciones_cierre != evento.observaciones_cierre:
-        # Evento que ya estaba cerrado: se corrige solo el texto de cierre.
-        detalle["observaciones_cierre"] = {"from": evento.observaciones_cierre, "to": observaciones_cierre}
-        evento.observaciones_cierre = observaciones_cierre
-
-    if data.latitud is not None or data.longitud is not None:
-        nueva_lat = evento.latitud if data.latitud is None else data.latitud
-        nueva_lon = evento.longitud if data.longitud is None else data.longitud
-        if nueva_lat != evento.latitud or nueva_lon != evento.longitud:
-            detalle["ubicacion"] = {"from": [evento.latitud, evento.longitud], "to": [nueva_lat, nueva_lon]}
-            evento.latitud = nueva_lat
-            evento.longitud = nueva_lon
-            evento.ubicacion = from_shape(Point(nueva_lon, nueva_lat), srid=4326)
-
-    db.add(evento)
-    db.commit()
-    db.refresh(evento)
-
-    if detalle:
-        _crear_audit(db, evento_id=evento.id, actor_usuario_id=actor_usuario_id, accion="update", detalle=detalle)
+        db.add(evento)
+        _crear_audit(
+            db,
+            evento_id=evento.id,
+            actor_usuario_id=actor_usuario_id,
+            accion="reabrir",
+            detalle={
+                "estado": {"from": "cerrado", "to": "abierto"},
+                "motivo": motivo,
+                "cierre_anterior": cierre_anterior,
+            },
+        )
         db.commit()
+    except Exception:
+        db.rollback()
+        raise
 
-    return obtener_evento(db, evento.id)
+    return obtener_evento(db, evento_id)
 
 
-def eliminar_evento(db: Session, *, evento_id: int, actor_usuario_id: int):
-
-    evento = db.query(Evento).filter(Evento.id == evento_id).first()
-
-    if evento:
-        _crear_audit(db, evento_id=evento.id, actor_usuario_id=actor_usuario_id, accion="delete")
-        db.delete(evento)
-        db.commit()
-
-    return evento
+def listar_historial(db: Session, *, evento_id: int) -> list[EventoAudit]:
+    return (
+        db.query(EventoAudit)
+        .options(joinedload(EventoAudit.actor_usuario))
+        .filter(EventoAudit.evento_id == evento_id)
+        .order_by(EventoAudit.fecha.asc(), EventoAudit.id.asc())
+        .all()
+    )
 
 
 def listar_tipos_evento(db: Session, *, area: str | None = None):

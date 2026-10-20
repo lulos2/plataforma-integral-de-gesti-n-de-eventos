@@ -122,7 +122,6 @@ def crear_evento_videoseguridad(
                 observaciones=data.observaciones,
             )
         )
-        events_crud._crear_audit(db, evento_id=evento.id, actor_usuario_id=actor_usuario_id, accion="create")
         db.commit()
     except Exception:
         db.rollback()
@@ -167,12 +166,17 @@ def actualizar_evento_videoseguridad(
             detalle[campo] = {"from": getattr(registro, campo), "to": nuevo}
             setattr(registro, campo, nuevo)
 
-    db.add(registro)
-    db.commit()
-    db.refresh(registro)
-
-    if detalle:
-        events_crud._crear_audit(db, evento_id=evento_id, actor_usuario_id=actor_usuario_id, accion="update", detalle=detalle)
+    try:
+        db.add(registro)
+        if detalle:
+            # El cambio y su auditoria se confirman juntos.
+            events_crud._crear_audit(
+                db, evento_id=evento_id, actor_usuario_id=actor_usuario_id, accion="update", detalle=detalle
+            )
         db.commit()
+    except Exception:
+        db.rollback()
+        raise
 
+    db.refresh(registro)
     return registro

@@ -23,7 +23,7 @@ class Evento(Base):
     # Información
     descripcion = Column(Text)
     fuente = Column(String, nullable=False, server_default="manual", index=True)  # manual | automatico | integracion_x
-    estado = Column(String, nullable=False, server_default="abierto", index=True)  # abierto | cerrado
+    estado = Column(String, nullable=False, server_default="abierto", index=True)  # abierto | cerrado | anulado
     fecha_ocurrencia = Column(DateTime(timezone=True), nullable=True, index=True)
     fecha_creacion = Column(DateTime(timezone=True), server_default=func.now(), index=True)
     fecha_actualizacion = Column(
@@ -60,6 +60,18 @@ class Evento(Base):
     fecha_cierre = Column(DateTime(timezone=True), nullable=True)
     cerrado_por_id = Column(Integer, ForeignKey("usuarios.id"), nullable=True)
     observaciones_cierre = Column(Text, nullable=True)
+    # Quien cerro, copiado al momento del cierre: no cambia aunque despues se edite el perfil
+    # o se desactive la cuenta. cierre_origen: "sistema" (cerrado en la app) | "historico" (papel).
+    cierre_origen = Column(String, nullable=True)
+    cierre_nombre = Column(String, nullable=True)
+    cierre_apellido = Column(String, nullable=True)
+
+    # Anulacion (estado "anulado"): el registro se conserva, nunca se borra.
+    fecha_anulacion = Column(DateTime(timezone=True), nullable=True)
+    anulado_por_id = Column(Integer, ForeignKey("usuarios.id"), nullable=True)
+    anulado_por_nombre = Column(String, nullable=True)
+    anulado_por_apellido = Column(String, nullable=True)
+    motivo_anulacion = Column(Text, nullable=True)
 
     tipo_evento = relationship("TipoEvento")
     usuario = relationship("Usuario", foreign_keys=[usuario_id])
@@ -89,8 +101,11 @@ class EventoAudit(Base):
     id = Column(Integer, primary_key=True, autoincrement=True)
     evento_id = Column(Integer, ForeignKey("eventos.id", ondelete="CASCADE"), nullable=False, index=True)
 
-    accion = Column(String, nullable=False)  # create | update | delete
+    accion = Column(String, nullable=False)  # create | update | cerrar | reabrir | anular
     actor_usuario_id = Column(Integer, ForeignKey("usuarios.id"), nullable=False, index=True)
+    # Area y turno laboral del usuario al momento de la operacion.
+    actor_area = Column(String, nullable=True)
+    actor_turno = Column(String, nullable=True)
 
     fecha = Column(DateTime(timezone=True), server_default=func.now(), index=True)
     detalle = Column(JSONB, nullable=True)

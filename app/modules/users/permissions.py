@@ -16,6 +16,7 @@ class PermissionCode(StrEnum):
     EVENTOS_READ = "eventos:read"
     EVENTOS_WRITE = "eventos:write"
     EVENTOS_ANULAR = "eventos:anular"
+    EVENTOS_REABRIR = "eventos:reabrir"
 
     # Mapas, reportes y estadisticas
     ESTADISTICAS_READ = "estadisticas:read"
@@ -32,6 +33,7 @@ PERMISSION_DESCRIPTIONS: dict[PermissionCode, str] = {
     PermissionCode.EVENTOS_READ: "Consultar eventos",
     PermissionCode.EVENTOS_WRITE: "Registrar y modificar eventos",
     PermissionCode.EVENTOS_ANULAR: "Anular eventos",
+    PermissionCode.EVENTOS_REABRIR: "Reabrir eventos cerrados",
     PermissionCode.ESTADISTICAS_READ: "Acceder a mapas, reportes y estadisticas",
     PermissionCode.AREAS_ALL: "Acceder a los datos de todas las areas",
 }

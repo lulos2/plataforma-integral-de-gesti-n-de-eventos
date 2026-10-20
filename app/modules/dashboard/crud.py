@@ -29,7 +29,8 @@ def obtener_resumen(db: Session, *, area: str | None) -> dict:
     def en_periodo(desde: datetime):
         return and_(fecha >= desde, fecha <= ahora)
 
-    q = db.query(Evento)
+    # Los eventos anulados no cuentan en ningun indicador, grafico ni listado.
+    q = db.query(Evento).filter(Evento.estado != "anulado")
     if area:
         q = q.join(Evento.tipo_evento).filter(TipoEvento.area == area)
 
@@ -42,7 +43,11 @@ def obtener_resumen(db: Session, *, area: str | None) -> dict:
 
     # Evolucion diaria: se agrupa por dia argentino y se completan con cero los dias sin eventos.
     dia_local = func.date(func.timezone(ZONA_SQL, fecha))
-    q_dias = db.query(dia_local, func.count(Evento.id)).filter(en_periodo(inicio_30_dias))
+    q_dias = (
+        db.query(dia_local, func.count(Evento.id))
+        .filter(en_periodo(inicio_30_dias))
+        .filter(Evento.estado != "anulado")
+    )
     if area:
         q_dias = q_dias.join(Evento.tipo_evento).filter(TipoEvento.area == area)
     por_dia: dict[date, int] = {d: c for d, c in q_dias.group_by(dia_local).all()}
@@ -52,11 +57,14 @@ def obtener_resumen(db: Session, *, area: str | None) -> dict:
         for d in (primer_dia + timedelta(days=i) for i in range(DIAS_EVOLUCION))
     ]
 
-    # Distribucion por tipo en los mismos 30 dias (tambien los tipos sin eventos, con cero).
+    # Distribucion por tipo en los mismos 30 dias. Solo aparecen los tipos con eventos:
+    # si no hay ninguno, la lista queda vacia.
     cantidad = func.count(Evento.id)
     q_tipos = (
         db.query(TipoEvento.area, TipoEvento.nombre, cantidad)
-        .outerjoin(Evento, and_(Evento.tipo_evento_id == TipoEvento.id, en_periodo(inicio_30_dias)))
+        .join(Evento, Evento.tipo_evento_id == TipoEvento.id)
+        .filter(en_periodo(inicio_30_dias))
+        .filter(Evento.estado != "anulado")
     )
     if area:
         q_tipos = q_tipos.filter(TipoEvento.area == area)
@@ -71,7 +79,7 @@ def obtener_resumen(db: Session, *, area: str | None) -> dict:
     q_ultimos = db.query(Evento).options(
         joinedload(Evento.tipo_evento),
         joinedload(Evento.videoseguridad).joinedload(EventoVideoseguridad.servicio_actuante),
-    ).filter(fecha <= ahora)
+    ).filter(fecha <= ahora, Evento.estado != "anulado")
     if area:
         q_ultimos = q_ultimos.join(Evento.tipo_evento).filter(TipoEvento.area == area)
     ultimos = q_ultimos.order_by(fecha.desc(), Evento.id.desc()).limit(ULTIMOS_EVENTOS).all()

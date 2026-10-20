@@ -2,7 +2,8 @@ from __future__ import annotations
 
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
+from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import text
 
@@ -11,6 +12,7 @@ from app.database.base import Base
 from app.database.session import SessionLocal, engine
 from app.database import models as _models  # noqa: F401
 from app.api.router import api_router
+from app.modules.events.crud import EventoAnuladoError
 from app.modules.events.registry import sync_servicios_actuantes, sync_tipos_evento
 from app.modules.users.registry import (
     bootstrap_superadmin,
@@ -41,6 +43,7 @@ async def lifespan(_: FastAPI):
             conn.execute(text("ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS apellido VARCHAR"))
             conn.execute(text("ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS area VARCHAR"))
             conn.execute(text("CREATE INDEX IF NOT EXISTS ix_usuarios_area ON usuarios (area)"))
+            conn.execute(text("ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS turno VARCHAR"))
             conn.execute(
                 text(
                     """
@@ -129,6 +132,31 @@ async def lifespan(_: FastAPI):
             )
             conn.execute(text("ALTER TABLE eventos ADD COLUMN IF NOT EXISTS observaciones_cierre TEXT"))
 
+            # Quien cerro (copia del nombre al momento del cierre) y anulacion de eventos.
+            conn.execute(text("ALTER TABLE eventos ADD COLUMN IF NOT EXISTS cierre_origen VARCHAR"))
+            conn.execute(text("ALTER TABLE eventos ADD COLUMN IF NOT EXISTS cierre_nombre VARCHAR"))
+            conn.execute(text("ALTER TABLE eventos ADD COLUMN IF NOT EXISTS cierre_apellido VARCHAR"))
+            conn.execute(text("ALTER TABLE eventos ADD COLUMN IF NOT EXISTS fecha_anulacion TIMESTAMPTZ"))
+            conn.execute(
+                text("ALTER TABLE eventos ADD COLUMN IF NOT EXISTS anulado_por_id INTEGER REFERENCES usuarios(id)")
+            )
+            conn.execute(text("ALTER TABLE eventos ADD COLUMN IF NOT EXISTS anulado_por_nombre VARCHAR"))
+            conn.execute(text("ALTER TABLE eventos ADD COLUMN IF NOT EXISTS anulado_por_apellido VARCHAR"))
+            conn.execute(text("ALTER TABLE eventos ADD COLUMN IF NOT EXISTS motivo_anulacion TEXT"))
+            # Eventos ya cerrados antes de este cambio: se completa quien cerro desde su usuario.
+            conn.execute(
+                text(
+                    """
+                    UPDATE eventos e
+                    SET cierre_origen = 'sistema', cierre_nombre = u.nombre, cierre_apellido = u.apellido
+                    FROM usuarios u
+                    WHERE e.cerrado_por_id = u.id AND e.cierre_origen IS NULL
+                    """
+                )
+            )
+            conn.execute(text("ALTER TABLE eventos_audit ADD COLUMN IF NOT EXISTS actor_area VARCHAR"))
+            conn.execute(text("ALTER TABLE eventos_audit ADD COLUMN IF NOT EXISTS actor_turno VARCHAR"))
+
             # Estados: solo "abierto" y "cerrado". Lo que haya quedado en "en_proceso" pasa a "abierto".
             conn.execute(text("UPDATE eventos SET estado = 'abierto' WHERE estado = 'en_proceso'"))
 
@@ -165,6 +193,12 @@ app.add_middleware(
 )
 
 app.include_router(api_router)
+
+
+@app.exception_handler(EventoAnuladoError)
+async def evento_anulado_handler(_: Request, exc: EventoAnuladoError):
+    # Un evento anulado se conserva pero ya no admite cambios.
+    return JSONResponse(status_code=409, content={"detail": str(exc)})
 
 
 @app.get("/")
