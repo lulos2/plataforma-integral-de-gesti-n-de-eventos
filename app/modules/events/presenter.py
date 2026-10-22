@@ -69,6 +69,7 @@ def to_audit_response(registro) -> AuditResponse:
     return AuditResponse(
         id=registro.id,
         evento_id=registro.evento_id,
+        numeracion_area=registro.numeracion_area,
         accion=registro.accion,
         usuario_id=registro.actor_usuario_id,
         usuario_nombre=actor.nombre if actor else None,

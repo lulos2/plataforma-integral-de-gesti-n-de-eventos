@@ -18,6 +18,9 @@ class PermissionCode(StrEnum):
     EVENTOS_ANULAR = "eventos:anular"
     EVENTOS_REABRIR = "eventos:reabrir"
 
+    # Numeracion de eventos de cada area
+    NUMERACION_CONFIGURAR = "numeracion:configurar"
+
     # Mapas, reportes y estadisticas
     ESTADISTICAS_READ = "estadisticas:read"
 
@@ -34,6 +37,7 @@ PERMISSION_DESCRIPTIONS: dict[PermissionCode, str] = {
     PermissionCode.EVENTOS_WRITE: "Registrar y modificar eventos",
     PermissionCode.EVENTOS_ANULAR: "Anular eventos",
     PermissionCode.EVENTOS_REABRIR: "Reabrir eventos cerrados",
+    PermissionCode.NUMERACION_CONFIGURAR: "Inicializar la numeracion de eventos del area",
     PermissionCode.ESTADISTICAS_READ: "Acceder a mapas, reportes y estadisticas",
     PermissionCode.AREAS_ALL: "Acceder a los datos de todas las areas",
 }

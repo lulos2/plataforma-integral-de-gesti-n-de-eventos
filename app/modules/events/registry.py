@@ -2,7 +2,8 @@ from dataclasses import dataclass
 
 from sqlalchemy.orm import Session
 
-from app.modules.events.models import TipoEvento
+from app.core.areas import AREAS_VALIDAS
+from app.modules.events.models import NumeracionArea, TipoEvento
 from app.modules.events.models_domain import ServicioActuante
 
 
@@ -50,6 +51,15 @@ def sync_tipos_evento(db: Session) -> None:
         if (defn.area, defn.nombre) not in existentes
     ]
 
+    if nuevos:
+        db.add_all(nuevos)
+        db.commit()
+
+
+def sync_numeracion_areas(db: Session) -> None:
+    """Una fila de contador por area (sin inicializar). Nunca pisa un contador ya configurado."""
+    existentes = {row[0] for row in db.query(NumeracionArea.area).all()}
+    nuevos = [NumeracionArea(area=a) for a in AREAS_VALIDAS if a not in existentes]
     if nuevos:
         db.add_all(nuevos)
         db.commit()

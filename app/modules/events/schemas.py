@@ -225,7 +225,8 @@ class AnulacionResponse(ResponseModel):
 
 class AuditResponse(ResponseModel):
     id: int
-    evento_id: int
+    evento_id: int | None = None
+    numeracion_area: str | None = None
     accion: str
     usuario_id: int
     usuario_nombre: str | None = None

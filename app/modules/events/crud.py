@@ -10,13 +10,21 @@ from geoalchemy2.shape import from_shape
 from shapely.geometry import Point
 
 from app.core.serialization import ARGENTINA_TZ, to_argentina_iso
-from app.modules.events.models import Evento, EventoAudit, TipoEvento
+from app.modules.events.models import Evento, EventoAudit, NumeracionArea, TipoEvento
 from app.modules.events.models_domain import EventoIntervencion, EventoVideoseguridad, EventoZoonosis, ServicioActuante
 from app.modules.users.models import Usuario
 
 
 class EventoAnuladoError(Exception):
     """El evento esta anulado: se conserva pero ya no admite cambios."""
+
+
+class NumeracionNoConfiguradaError(Exception):
+    """La numeracion del area todavia no fue inicializada: no se pueden crear eventos."""
+
+
+class NumeracionYaConfiguradaError(Exception):
+    """La numeracion del area ya fue inicializada y no puede configurarse otra vez."""
 
 
 class _EventoBaseData(Protocol):
@@ -61,12 +69,22 @@ def _obtener_actor(db: Session, actor_usuario_id: int) -> Usuario:
     return actor
 
 
-def _crear_audit(db: Session, *, evento_id: int, actor_usuario_id: int, accion: str, detalle: dict | None = None):
+def _crear_audit(
+    db: Session,
+    *,
+    evento_id: int | None = None,
+    actor_usuario_id: int,
+    accion: str,
+    detalle: dict | None = None,
+    numeracion_area: str | None = None,
+):
     # No hace commit: la auditoria se guarda en la misma transaccion que el cambio que registra.
+    # Si la operacion no es sobre un evento (inicializar la numeracion), va con su area en numeracion_area.
     actor = _obtener_actor(db, actor_usuario_id)
     db.add(
         EventoAudit(
             evento_id=evento_id,
+            numeracion_area=numeracion_area,
             actor_usuario_id=actor_usuario_id,
             actor_area=actor.area,
             actor_turno=actor.turno,
@@ -74,6 +92,27 @@ def _crear_audit(db: Session, *, evento_id: int, actor_usuario_id: int, accion: 
             detalle=_a_json(detalle),
         )
     )
+
+
+def bloquear_numeracion(db: Session, area: str) -> NumeracionArea | None:
+    # Bloquea la fila del contador hasta el commit: dos pedidos simultaneos del mismo area hacen cola.
+    return (
+        db.query(NumeracionArea)
+        .filter(NumeracionArea.area == area)
+        .populate_existing()
+        .with_for_update()
+        .first()
+    )
+
+
+def asignar_siguiente_numero(db: Session, area: str) -> int:
+    contador = bloquear_numeracion(db, area)
+    if contador is None or not contador.inicializada:
+        raise NumeracionNoConfiguradaError(
+            f"La numeracion del area {area} no esta configurada: el administrador del area debe inicializarla"
+        )
+    contador.ultimo_numero += 1
+    return contador.ultimo_numero
 
 
 def verificar_no_anulado(evento: Evento) -> None:
@@ -115,8 +154,13 @@ def crear_evento_base(
     if not cerrado and observaciones_cierre:
         raise ValueError("observaciones_cierre solo se puede indicar en un evento cerrado")
 
+    # El numero se toma recien despues de validar todo, para tener el contador bloqueado el menor tiempo posible.
+    numero_evento = asignar_siguiente_numero(db, tipo.area)
+
     evento = Evento(
         tipo_evento_id=tipo_evento_id,
+        area=tipo.area,
+        numero_evento=numero_evento,
         descripcion=data.descripcion,
         fuente=data.fuente,
         estado=data.estado,

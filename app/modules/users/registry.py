@@ -48,6 +48,7 @@ SYSTEM_ROLES: dict[str, tuple[PermissionCode, ...]] = {
         PermissionCode.EVENTOS_WRITE,
         PermissionCode.EVENTOS_ANULAR,
         PermissionCode.EVENTOS_REABRIR,
+        PermissionCode.NUMERACION_CONFIGURAR,
         PermissionCode.ESTADISTICAS_READ,
     ),
     # Operador: registra, consulta y modifica eventos de su area, y ve mapas/estadisticas.

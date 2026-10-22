@@ -12,8 +12,8 @@ from app.database.base import Base
 from app.database.session import SessionLocal, engine
 from app.database import models as _models  # noqa: F401
 from app.api.router import api_router
-from app.modules.events.crud import EventoAnuladoError
-from app.modules.events.registry import sync_servicios_actuantes, sync_tipos_evento
+from app.modules.events.crud import EventoAnuladoError, NumeracionNoConfiguradaError, NumeracionYaConfiguradaError
+from app.modules.events.registry import sync_numeracion_areas, sync_servicios_actuantes, sync_tipos_evento
 from app.modules.users.registry import (
     bootstrap_superadmin,
     ensure_single_admin_dios_user,
@@ -66,41 +66,43 @@ async def lifespan(_: FastAPI):
             conn.execute(text("ALTER TABLE eventos ADD COLUMN IF NOT EXISTS recibio_nombre VARCHAR"))
             conn.execute(text("ALTER TABLE eventos ADD COLUMN IF NOT EXISTS recibio_funcion VARCHAR"))
 
-            # numero_evento: correlativo autogenerado. Se crea la secuencia, se agrega la columna
-            # si falta, se completan filas viejas sin numero, y recien despues se fija el default
-            # y las restricciones (para que funcione tanto en una base nueva como en una existente).
-            conn.execute(text("CREATE SEQUENCE IF NOT EXISTS eventos_numero_evento_seq"))
+            # Numeracion por area: cada evento guarda su area y el numero es unico dentro de ella
+            # (el mismo numero puede existir en areas distintas). Antes era una secuencia global.
             conn.execute(text("ALTER TABLE eventos ADD COLUMN IF NOT EXISTS numero_evento INTEGER"))
-            conn.execute(
-                text(
-                    "UPDATE eventos SET numero_evento = nextval('eventos_numero_evento_seq') "
-                    "WHERE numero_evento IS NULL"
-                )
-            )
-            conn.execute(
-                text(
-                    "SELECT setval('eventos_numero_evento_seq', "
-                    "COALESCE((SELECT MAX(numero_evento) FROM eventos), 0) + 1, false)"
-                )
-            )
-            conn.execute(
-                text("ALTER TABLE eventos ALTER COLUMN numero_evento SET DEFAULT nextval('eventos_numero_evento_seq')")
-            )
+            conn.execute(text("UPDATE eventos SET numero_evento = id WHERE numero_evento IS NULL"))
+            conn.execute(text("ALTER TABLE eventos ALTER COLUMN numero_evento DROP DEFAULT"))
             conn.execute(text("ALTER TABLE eventos ALTER COLUMN numero_evento SET NOT NULL"))
+            conn.execute(text("ALTER TABLE eventos DROP CONSTRAINT IF EXISTS uq_eventos_numero_evento"))
+            conn.execute(text("DROP SEQUENCE IF EXISTS eventos_numero_evento_seq"))
+            conn.execute(text("CREATE INDEX IF NOT EXISTS ix_eventos_numero_evento ON eventos (numero_evento)"))
+            conn.execute(text("ALTER TABLE eventos ADD COLUMN IF NOT EXISTS area VARCHAR"))
+            conn.execute(
+                text(
+                    "UPDATE eventos e SET area = t.area FROM tipos_evento t "
+                    "WHERE e.tipo_evento_id = t.id AND e.area IS NULL"
+                )
+            )
+            conn.execute(text("ALTER TABLE eventos ALTER COLUMN area SET NOT NULL"))
+            conn.execute(text("CREATE INDEX IF NOT EXISTS ix_eventos_area ON eventos (area)"))
             conn.execute(
                 text(
                     """
                     DO $$ BEGIN
                         IF NOT EXISTS (
-                            SELECT 1 FROM pg_constraint WHERE conname = 'uq_eventos_numero_evento'
+                            SELECT 1 FROM pg_constraint WHERE conname = 'uq_eventos_area_numero'
                         ) THEN
-                            ALTER TABLE eventos ADD CONSTRAINT uq_eventos_numero_evento UNIQUE (numero_evento);
+                            ALTER TABLE eventos ADD CONSTRAINT uq_eventos_area_numero UNIQUE (area, numero_evento);
                         END IF;
                     END $$
                     """
                 )
             )
-            conn.execute(text("CREATE INDEX IF NOT EXISTS ix_eventos_numero_evento ON eventos (numero_evento)"))
+            # La auditoria tambien registra operaciones que no son sobre un evento (inicializar la numeracion).
+            conn.execute(text("ALTER TABLE eventos_audit ALTER COLUMN evento_id DROP NOT NULL"))
+            conn.execute(text("ALTER TABLE eventos_audit ADD COLUMN IF NOT EXISTS numeracion_area VARCHAR"))
+            conn.execute(
+                text("CREATE INDEX IF NOT EXISTS ix_eventos_audit_numeracion_area ON eventos_audit (numeracion_area)")
+            )
 
             conn.execute(text("ALTER TABLE eventos_videoseguridad ADD COLUMN IF NOT EXISTS movil_comisionado VARCHAR"))
             conn.execute(text("ALTER TABLE eventos_videoseguridad ADD COLUMN IF NOT EXISTS supervisor_nombre VARCHAR"))
@@ -164,6 +166,7 @@ async def lifespan(_: FastAPI):
     try:
         sync_tipos_evento(db)
         sync_servicios_actuantes(db)
+        sync_numeracion_areas(db)
         sync_permissions(db)
         sync_system_roles(db)
         migrate_legacy_superadmin_users(db)
@@ -193,6 +196,12 @@ app.add_middleware(
 )
 
 app.include_router(api_router)
+
+
+@app.exception_handler(NumeracionNoConfiguradaError)
+@app.exception_handler(NumeracionYaConfiguradaError)
+async def numeracion_handler(_: Request, exc: Exception):
+    return JSONResponse(status_code=409, content={"detail": str(exc)})
 
 
 @app.exception_handler(EventoAnuladoError)
