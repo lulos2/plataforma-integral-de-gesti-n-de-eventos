@@ -33,9 +33,10 @@ class Evento(Base):
     )
 
     # Geoposición
-    latitud = Column(Float, nullable=False)
-    longitud = Column(Float, nullable=False)
-    ubicacion = Column(Geometry("POINT", srid=4326), nullable=False)
+    # Opcionales: un evento historico puede no tener ubicacion (no aparece en el mapa).
+    latitud = Column(Float, nullable=True)
+    longitud = Column(Float, nullable=True)
+    ubicacion = Column(Geometry("POINT", srid=4326), nullable=True)
 
     # Datos adicionales
     turno = Column(String, nullable=True)
@@ -48,6 +49,18 @@ class Evento(Base):
 
     # Auditoría
     usuario_id = Column(Integer, ForeignKey("usuarios.id"), nullable=False, index=True)
+
+    # Modalidad de carga: "nuevo" (numero automatico) o "historico" (digitalizacion del registro en papel,
+    # con el numero original). En un historico, usuario_id y fecha_creacion son quien lo digitalizo y cuando.
+    modalidad = Column(String, nullable=False, server_default="nuevo", index=True)
+    # Datos del registro original en papel (solo historicos). Pueden ser null si no figuran en el papel.
+    registro_fecha = Column(DateTime(timezone=True), nullable=True)
+    registro_responsable_nombre = Column(String, nullable=True)
+    registro_responsable_apellido = Column(String, nullable=True)
+    registro_turno = Column(String, nullable=True)
+    registro_referencia = Column(String, nullable=True)  # libro, folio o pagina
+    digitalizado_por_nombre = Column(String, nullable=True)
+    digitalizado_por_apellido = Column(String, nullable=True)
 
     # Cierre (se completan al pasar a "cerrado")
     fecha_cierre = Column(DateTime(timezone=True), nullable=True)

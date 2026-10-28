@@ -4,6 +4,7 @@ from datetime import datetime, timedelta
 from typing import Protocol
 
 from sqlalchemy import and_, func, or_
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 from sqlalchemy.orm import joinedload
 from geoalchemy2.shape import from_shape
@@ -27,19 +28,25 @@ class NumeracionYaConfiguradaError(Exception):
     """La numeracion del area ya fue inicializada y no puede configurarse otra vez."""
 
 
+class NumeroEventoDuplicadoError(Exception):
+    """Ya existe un evento con ese numero en el area: no se sobrescribe."""
+
+
 class _EventoBaseData(Protocol):
     descripcion: str | None
     fuente: str
     estado: str
     fecha_ocurrencia: datetime
-    latitud: float
-    longitud: float
+    latitud: float | None
+    longitud: float | None
     turno: str | None
     direccion: str | None
     origen: str | None
     recibio_nombre: str | None
     recibio_funcion: str | None
     observaciones_cierre: str | None
+    modalidad: str
+    numero_evento: int | None
 
 
 def _limpiar_texto(valor: str | None) -> str | None:
@@ -115,6 +122,26 @@ def asignar_siguiente_numero(db: Session, area: str) -> int:
     return contador.ultimo_numero
 
 
+def validar_numero_historico(db: Session, area: str, numero: int) -> None:
+    """
+    Un numero historico ya existia en el papel: no puede repetirse ni superar lo que ya se uso,
+    y no toca el contador automatico. El contador queda bloqueado mientras se valida.
+    """
+    contador = bloquear_numeracion(db, area)
+    if contador is None or not contador.inicializada:
+        raise NumeracionNoConfiguradaError(
+            f"La numeracion del area {area} no esta configurada: el administrador del area debe inicializarla"
+        )
+    if numero > contador.ultimo_numero:
+        raise ValueError(
+            f"el numero {numero} es superior al ultimo numero utilizado en {area} ({contador.ultimo_numero}): "
+            "hay que resolver la inconsistencia antes de cargarlo"
+        )
+    existe = db.query(Evento.id).filter(Evento.area == area, Evento.numero_evento == numero).first()
+    if existe:
+        raise NumeroEventoDuplicadoError(f"ya existe el evento {numero} en {area}: no se sobrescribe")
+
+
 def verificar_no_anulado(evento: Evento) -> None:
     if evento.estado == "anulado":
         raise EventoAnuladoError("El evento esta anulado y no admite cambios")
@@ -144,18 +171,59 @@ def crear_evento_base(
     if not tipo:
         raise ValueError("tipo_evento_id invalido")
 
-    point = from_shape(Point(data.longitud, data.latitud), srid=4326)
+    punto = None
+    if data.latitud is not None and data.longitud is not None:
+        punto = from_shape(Point(data.longitud, data.latitud), srid=4326)
 
     actor = _obtener_actor(db, actor_usuario_id)
+    historico = data.modalidad == "historico"
     cerrado = data.estado == "cerrado"
-    observaciones_cierre = _limpiar_texto(data.observaciones_cierre)
-    if cerrado and not observaciones_cierre:
-        raise ValueError("observaciones_cierre es obligatoria para cerrar un evento")
-    if not cerrado and observaciones_cierre:
-        raise ValueError("observaciones_cierre solo se puede indicar en un evento cerrado")
 
-    # El numero se toma recien despues de validar todo, para tener el contador bloqueado el menor tiempo posible.
-    numero_evento = asignar_siguiente_numero(db, tipo.area)
+    if historico:
+        registro = data.registro_original
+        if registro.area != tipo.area:
+            raise ValueError("el area del registro original no coincide con el area del tipo de evento")
+        cierre_original = data.cierre_original if cerrado else None
+        # Se valida el numero original (sin tocar el contador automatico).
+        validar_numero_historico(db, tipo.area, data.numero_evento)
+        numero_evento = data.numero_evento
+        extras = dict(
+            modalidad="historico",
+            registro_fecha=registro.fecha,
+            registro_responsable_nombre=registro.responsable_nombre,
+            registro_responsable_apellido=registro.responsable_apellido,
+            registro_turno=registro.turno,
+            registro_referencia=registro.referencia,
+            digitalizado_por_nombre=actor.nombre,
+            digitalizado_por_apellido=actor.apellido,
+        )
+        if cierre_original is not None:
+            # El cierre es el del papel: no se le atribuye a quien digitaliza ni se usa la fecha de hoy.
+            extras.update(
+                fecha_cierre=cierre_original.fecha,
+                cerrado_por_id=None,
+                cierre_origen="historico",
+                cierre_nombre=cierre_original.nombre,
+                cierre_apellido=cierre_original.apellido,
+                observaciones_cierre=cierre_original.observaciones,
+            )
+        accion = "digitalizar"
+        detalle_audit = {
+            "modalidad": "historico",
+            "numero_evento": numero_evento,
+            "registro_original": registro.model_dump(),
+            "cierre_original": cierre_original.model_dump() if cierre_original else None,
+        }
+    else:
+        if cerrado:
+            raise ValueError("un nuevo registro comienza en estado abierto")
+        if _limpiar_texto(data.observaciones_cierre):
+            raise ValueError("observaciones_cierre solo se puede indicar al cerrar un evento")
+        # El numero se toma recien despues de validar todo, para tener el contador bloqueado el menor tiempo posible.
+        numero_evento = asignar_siguiente_numero(db, tipo.area)
+        extras = dict(modalidad="nuevo")
+        accion = "create"
+        detalle_audit = None
 
     evento = Evento(
         tipo_evento_id=tipo_evento_id,
@@ -167,24 +235,22 @@ def crear_evento_base(
         fecha_ocurrencia=data.fecha_ocurrencia,
         latitud=data.latitud,
         longitud=data.longitud,
-        ubicacion=point,
+        ubicacion=punto,
         turno=data.turno,
         direccion=data.direccion,
         origen=data.origen,
         recibio_nombre=data.recibio_nombre,
         recibio_funcion=data.recibio_funcion,
         usuario_id=actor_usuario_id,
-        fecha_cierre=datetime.now(ARGENTINA_TZ) if cerrado else None,
-        cerrado_por_id=actor_usuario_id if cerrado else None,
-        cierre_origen="sistema" if cerrado else None,
-        cierre_nombre=actor.nombre if cerrado else None,
-        cierre_apellido=actor.apellido if cerrado else None,
-        observaciones_cierre=observaciones_cierre,
+        **extras,
     )
 
     db.add(evento)
-    db.flush()  # assign evento.id without committing
-    _crear_audit(db, evento_id=evento.id, actor_usuario_id=actor_usuario_id, accion="create")
+    try:
+        db.flush()  # asigna evento.id sin confirmar; la restriccion unica es la garantia final contra duplicados
+    except IntegrityError as e:
+        raise NumeroEventoDuplicadoError(f"ya existe el evento {numero_evento} en {tipo.area}") from e
+    _crear_audit(db, evento_id=evento.id, actor_usuario_id=actor_usuario_id, accion=accion, detalle=detalle_audit)
     return evento, tipo
 
 
@@ -285,7 +351,9 @@ def obtener_puntos_mapa(
         fecha_evento.label("fecha"),
         TipoEvento.area,
         TipoEvento.nombre,
-    ).join(TipoEvento, TipoEvento.id == Evento.tipo_evento_id)
+    ).join(TipoEvento, TipoEvento.id == Evento.tipo_evento_id).filter(
+        Evento.latitud.isnot(None), Evento.longitud.isnot(None)  # sin ubicacion no hay punto en el mapa
+    )
 
     if area:
         q = q.filter(TipoEvento.area == area)
@@ -497,6 +565,8 @@ def actualizar_evento(db: Session, evento_id: int, data, *, actor_usuario_id: in
         if data.latitud is not None or data.longitud is not None:
             nueva_lat = evento.latitud if data.latitud is None else data.latitud
             nueva_lon = evento.longitud if data.longitud is None else data.longitud
+            if nueva_lat is None or nueva_lon is None:
+                raise ValueError("latitud y longitud se envian juntas")
             if nueva_lat != evento.latitud or nueva_lon != evento.longitud:
                 detalle["ubicacion"] = {"from": [evento.latitud, evento.longitud], "to": [nueva_lat, nueva_lon]}
                 evento.latitud = nueva_lat

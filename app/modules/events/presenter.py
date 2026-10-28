@@ -1,4 +1,11 @@
-from app.modules.events.schemas import AnulacionResponse, AuditResponse, CierreResponse, EventoResponse
+from app.modules.events.schemas import (
+    AnulacionResponse,
+    AuditResponse,
+    CierreResponse,
+    DigitalizacionResponse,
+    EventoResponse,
+    RegistroOriginalResponse,
+)
 
 
 def to_evento_response(evento) -> EventoResponse:
@@ -24,6 +31,23 @@ def to_evento_response(evento) -> EventoResponse:
             fecha=evento.fecha_anulacion,
             motivo=evento.motivo_anulacion,
         )
+    registro_original = None
+    digitalizacion = None
+    if evento.modalidad == "historico":
+        registro_original = RegistroOriginalResponse(
+            fecha=evento.registro_fecha,
+            responsable_nombre=evento.registro_responsable_nombre,
+            responsable_apellido=evento.registro_responsable_apellido,
+            area=evento.area,
+            turno=evento.registro_turno,
+            referencia=evento.registro_referencia,
+        )
+        digitalizacion = DigitalizacionResponse(
+            usuario_id=evento.usuario_id,
+            nombre=evento.digitalizado_por_nombre,
+            apellido=evento.digitalizado_por_apellido,
+            fecha=evento.fecha_creacion,
+        )
     return EventoResponse(
         id=evento.id,
         area=tipo.area if tipo else "",
@@ -47,6 +71,9 @@ def to_evento_response(evento) -> EventoResponse:
         fecha_cierre=evento.fecha_cierre,
         cerrado_por_id=evento.cerrado_por_id,
         observaciones_cierre=evento.observaciones_cierre,
+        modalidad=evento.modalidad,
+        registro_original=registro_original,
+        digitalizacion=digitalizacion,
         cierre=cierre,
         anulacion=anulacion,
         servicio_actuante=vs.servicio_actuante.nombre if vs and vs.servicio_actuante else None,

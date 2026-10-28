@@ -12,7 +12,12 @@ from app.database.base import Base
 from app.database.session import SessionLocal, engine
 from app.database import models as _models  # noqa: F401
 from app.api.router import api_router
-from app.modules.events.crud import EventoAnuladoError, NumeracionNoConfiguradaError, NumeracionYaConfiguradaError
+from app.modules.events.crud import (
+    EventoAnuladoError,
+    NumeracionNoConfiguradaError,
+    NumeracionYaConfiguradaError,
+    NumeroEventoDuplicadoError,
+)
 from app.modules.events.registry import sync_numeracion_areas, sync_servicios_actuantes, sync_tipos_evento
 from app.modules.users.registry import (
     bootstrap_superadmin,
@@ -97,6 +102,24 @@ async def lifespan(_: FastAPI):
                     """
                 )
             )
+            # Carga historica: modalidad y datos del registro original; ubicacion opcional.
+            conn.execute(
+                text("ALTER TABLE eventos ADD COLUMN IF NOT EXISTS modalidad VARCHAR NOT NULL DEFAULT 'nuevo'")
+            )
+            conn.execute(text("CREATE INDEX IF NOT EXISTS ix_eventos_modalidad ON eventos (modalidad)"))
+            for columna, tipo_sql in (
+                ("registro_fecha", "TIMESTAMPTZ"),
+                ("registro_responsable_nombre", "VARCHAR"),
+                ("registro_responsable_apellido", "VARCHAR"),
+                ("registro_turno", "VARCHAR"),
+                ("registro_referencia", "VARCHAR"),
+                ("digitalizado_por_nombre", "VARCHAR"),
+                ("digitalizado_por_apellido", "VARCHAR"),
+            ):
+                conn.execute(text(f"ALTER TABLE eventos ADD COLUMN IF NOT EXISTS {columna} {tipo_sql}"))
+            conn.execute(text("ALTER TABLE eventos ALTER COLUMN latitud DROP NOT NULL"))
+            conn.execute(text("ALTER TABLE eventos ALTER COLUMN longitud DROP NOT NULL"))
+            conn.execute(text("ALTER TABLE eventos ALTER COLUMN ubicacion DROP NOT NULL"))
             # La auditoria tambien registra operaciones que no son sobre un evento (inicializar la numeracion).
             conn.execute(text("ALTER TABLE eventos_audit ALTER COLUMN evento_id DROP NOT NULL"))
             conn.execute(text("ALTER TABLE eventos_audit ADD COLUMN IF NOT EXISTS numeracion_area VARCHAR"))
@@ -200,6 +223,7 @@ app.include_router(api_router)
 
 @app.exception_handler(NumeracionNoConfiguradaError)
 @app.exception_handler(NumeracionYaConfiguradaError)
+@app.exception_handler(NumeroEventoDuplicadoError)
 async def numeracion_handler(_: Request, exc: Exception):
     return JSONResponse(status_code=409, content={"detail": str(exc)})
 
