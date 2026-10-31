@@ -11,6 +11,7 @@ from geoalchemy2.shape import from_shape
 from shapely.geometry import Point
 
 from app.core.serialization import ARGENTINA_TZ, to_argentina_iso
+from app.core.turnos import turno_en
 from app.modules.events.models import Evento, EventoAudit, NumeracionArea, TipoEvento
 from app.modules.events.models_domain import EventoIntervencion, EventoVideoseguridad, EventoZoonosis, ServicioActuante
 from app.modules.users.models import Usuario
@@ -94,7 +95,8 @@ def _crear_audit(
             numeracion_area=numeracion_area,
             actor_usuario_id=actor_usuario_id,
             actor_area=actor.area,
-            actor_turno=actor.turno,
+            # Turno del momento de la operacion (segun los horarios), no el del perfil del usuario.
+            actor_turno=turno_en(datetime.now(ARGENTINA_TZ), actor.area),
             accion=accion,
             detalle=_a_json(detalle),
         )

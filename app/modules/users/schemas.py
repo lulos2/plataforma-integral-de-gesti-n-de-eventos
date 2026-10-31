@@ -1,11 +1,10 @@
 import re
 from datetime import datetime
 
-from pydantic import BaseModel, ConfigDict, field_validator
+from pydantic import BaseModel, ConfigDict, field_validator, model_validator
 
 from app.core.areas import validar_area
 from app.core.serialization import ArgentinaResponseModel
-from app.core.turnos import validar_turno
 
 
 class RequestModel(BaseModel):
@@ -17,6 +16,27 @@ class ResponseModel(ArgentinaResponseModel):
 
 
 EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
+
+
+def _nombre_completo(value: str | None) -> str:
+    """Nombre o apellido: sin espacios de mas, al menos 2 letras y sin ser solo numeros o simbolos."""
+    if value is None:
+        raise ValueError("no puede ser null")
+    limpio = " ".join(value.split())
+    if len(limpio) < 2 or not any(c.isalpha() for c in limpio):
+        raise ValueError("debe estar completo (al menos 2 caracteres, con letras)")
+    if len(limpio) > 100:
+        raise ValueError("es demasiado largo (maximo 100 caracteres)")
+    return limpio
+
+
+def _email_valido(value: str | None) -> str:
+    if value is None:
+        raise ValueError("no puede ser null")
+    email = value.strip().lower()
+    if not EMAIL_RE.match(email):
+        raise ValueError("email invalido")
+    return email
 
 
 class RolCreate(RequestModel):
@@ -44,25 +64,21 @@ class UsuarioCreate(RequestModel):
     rol_ids: list[int]
     password: str
     area: str | None = None
-    turno: str | None = None
 
     @field_validator("area")
     @classmethod
     def validar_area_usuario(cls, value: str | None) -> str | None:
         return validar_area(value)
 
-    @field_validator("turno")
+    @field_validator("nombre", "apellido")
     @classmethod
-    def validar_turno_usuario(cls, value: str | None) -> str | None:
-        return validar_turno(value)
+    def validar_nombre_usuario(cls, value: str) -> str:
+        return _nombre_completo(value)
 
     @field_validator("email")
     @classmethod
     def validar_email(cls, value: str) -> str:
-        email = value.strip().lower()
-        if not EMAIL_RE.match(email):
-            raise ValueError("email invalido")
-        return email
+        return _email_valido(value)
 
     @field_validator("rol_ids")
     @classmethod
@@ -99,14 +115,28 @@ class UsuarioActivoUpdate(RequestModel):
     activo: bool
 
 
-class UsuarioTurnoUpdate(RequestModel):
-    # null deja al usuario sin turno asignado.
-    turno: str | None
+class UsuarioDatosUpdate(RequestModel):
+    """Datos personales editables. Se envian solo los que cambian."""
 
-    @field_validator("turno")
+    nombre: str | None = None
+    apellido: str | None = None
+    email: str | None = None
+
+    @field_validator("nombre", "apellido")
     @classmethod
-    def validar_turno_usuario(cls, value: str | None) -> str | None:
-        return validar_turno(value)
+    def validar_nombre_usuario(cls, value: str | None) -> str:
+        return _nombre_completo(value)
+
+    @field_validator("email")
+    @classmethod
+    def validar_email(cls, value: str | None) -> str:
+        return _email_valido(value)
+
+    @model_validator(mode="after")
+    def _al_menos_un_dato(self):
+        if not self.model_fields_set:
+            raise ValueError("enviar al menos uno: nombre, apellido o email")
+        return self
 
 
 class UsuarioResponse(ResponseModel):
@@ -116,7 +146,6 @@ class UsuarioResponse(ResponseModel):
     nombre: str | None = None
     apellido: str | None = None
     area: str | None = None
-    turno: str | None = None
     roles: list[RolResponse] = []
     activo: bool
     fecha_creacion: datetime

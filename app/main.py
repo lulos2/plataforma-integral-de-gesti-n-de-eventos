@@ -48,7 +48,8 @@ async def lifespan(_: FastAPI):
             conn.execute(text("ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS apellido VARCHAR"))
             conn.execute(text("ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS area VARCHAR"))
             conn.execute(text("CREATE INDEX IF NOT EXISTS ix_usuarios_area ON usuarios (area)"))
-            conn.execute(text("ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS turno VARCHAR"))
+            # El turno es del evento y de cada operacion, no una caracteristica fija del usuario (rotan).
+            conn.execute(text("ALTER TABLE usuarios DROP COLUMN IF EXISTS turno"))
             conn.execute(
                 text(
                     """

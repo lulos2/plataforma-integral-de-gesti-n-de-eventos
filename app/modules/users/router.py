@@ -18,9 +18,9 @@ from app.modules.users.schemas import (
     UsuarioActivoUpdate,
     UsuarioAreaUpdate,
     UsuarioCreate,
+    UsuarioDatosUpdate,
     UsuarioRolesUpdate,
     UsuarioResponse,
-    UsuarioTurnoUpdate,
 )
 
 
@@ -139,7 +139,10 @@ def actualizar_area_usuario(
     db: Session = Depends(get_db),
     _actor=Depends(require_admin_dios),
 ):
-    usuario = crud.actualizar_area_usuario(db, usuario_id=usuario_id, area=data.area)
+    try:
+        usuario = crud.actualizar_area_usuario(db, usuario_id=usuario_id, area=data.area)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
     if not usuario:
         raise HTTPException(status_code=404, detail="Usuario no encontrado")
     return usuario
@@ -153,15 +156,21 @@ def _usuario_administrable(db: Session, actor, usuario_id: int):
     return usuario
 
 
-@router.patch("/{usuario_id}/turno", response_model=UsuarioResponse)
-def actualizar_turno_usuario(
+@router.patch("/{usuario_id}/datos", response_model=UsuarioResponse)
+def actualizar_datos_usuario(
     usuario_id: int,
-    data: UsuarioTurnoUpdate,
+    data: UsuarioDatosUpdate,
     db: Session = Depends(get_db),
     actor=Depends(require_permissions("users:write")),
 ):
+    # Nombre, apellido y correo. El administrador de area solo puede en operadores de su area.
     _usuario_administrable(db, actor, usuario_id)
-    return crud.actualizar_turno_usuario(db, usuario_id=usuario_id, turno=data.turno)
+    try:
+        return crud.actualizar_datos_usuario(
+            db, usuario_id=usuario_id, cambios=data.model_dump(exclude_unset=True)
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
 
 @router.patch("/{usuario_id}/activo", response_model=UsuarioResponse)

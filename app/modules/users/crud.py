@@ -1,5 +1,6 @@
 from datetime import UTC, datetime, timedelta
 
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
@@ -9,6 +10,7 @@ from app.core.security import (
     hash_reset_token,
     verify_password,
 )
+from app.core.areas import ROLES_CON_AREA
 from app.modules.users.models import PasswordResetToken, Permission, Rol, Usuario
 from app.modules.users.permissions import PermissionCode
 from app.modules.users.schemas import RolCreate, UsuarioCreate
@@ -55,6 +57,14 @@ def listar_permisos(db: Session) -> list[Permission]:
     return db.query(Permission).order_by(Permission.code.asc()).all()
 
 
+def _exigir_cuenta_completa(*, nombre: str | None, apellido: str | None, area: str | None) -> None:
+    """Un administrador de area u operador necesita nombre y apellido completos y un area asignada."""
+    if not (nombre or "").strip() or not (apellido or "").strip():
+        raise ValueError("el administrador de area y el operador deben tener nombre y apellido")
+    if not area:
+        raise ValueError("el administrador de area y el operador deben tener un area asignada")
+
+
 def crear_usuario(db: Session, data: UsuarioCreate) -> Usuario:
     roles = db.query(Rol).filter(Rol.id.in_(data.rol_ids)).all()
     found_ids = {r.id for r in roles}
@@ -73,13 +83,20 @@ def crear_usuario(db: Session, data: UsuarioCreate) -> Usuario:
         if existing_admin_dios:
             raise ValueError("solo puede existir un usuario con rol adminDios")
 
+    if any(r.nombre in ROLES_CON_AREA for r in roles):
+        _exigir_cuenta_completa(nombre=data.nombre, apellido=data.apellido, area=data.area)
+
+    if db.query(Usuario.id).filter(Usuario.username == data.username).first():
+        raise ValueError("el username ya existe")
+    if db.query(Usuario.id).filter(func.lower(Usuario.email) == str(data.email).lower()).first():
+        raise ValueError("el email ya esta registrado")
+
     usuario = Usuario(
         username=data.username,
         email=str(data.email),
         nombre=data.nombre,
         apellido=data.apellido,
         area=data.area,
-        turno=data.turno,
         password_hash=get_password_hash(data.password),
     )
     usuario.roles = roles
@@ -170,6 +187,9 @@ def actualizar_roles_usuario(db: Session, *, usuario_id: int, rol_ids: list[int]
     if current_has_admin_dios and not target_has_admin_dios:
         raise ValueError("no se puede quitar el rol adminDios al usuario adminDios")
 
+    if any(r.nombre in ROLES_CON_AREA for r in roles):
+        _exigir_cuenta_completa(nombre=usuario.nombre, apellido=usuario.apellido, area=usuario.area)
+
     usuario.roles = roles
     db.add(usuario)
     db.commit()
@@ -182,6 +202,9 @@ def actualizar_area_usuario(db: Session, *, usuario_id: int, area: str | None) -
     if not usuario:
         return None
 
+    if area is None and any(r.nombre in ROLES_CON_AREA for r in usuario.roles):
+        raise ValueError("el administrador de area y el operador no pueden quedar sin area")
+
     usuario.area = area
     db.add(usuario)
     db.commit()
@@ -189,12 +212,25 @@ def actualizar_area_usuario(db: Session, *, usuario_id: int, area: str | None) -
     return usuario
 
 
-def actualizar_turno_usuario(db: Session, *, usuario_id: int, turno: str | None) -> Usuario | None:
+def actualizar_datos_usuario(db: Session, *, usuario_id: int, cambios: dict) -> Usuario | None:
+    """Edita nombre, apellido y/o email (solo las claves que vienen en cambios)."""
     usuario = db.query(Usuario).filter(Usuario.id == usuario_id).first()
     if not usuario:
         return None
 
-    usuario.turno = turno
+    email = cambios.get("email")
+    if email is not None and email != (usuario.email or "").lower():
+        repetido = (
+            db.query(Usuario.id)
+            .filter(func.lower(Usuario.email) == email, Usuario.id != usuario_id)
+            .first()
+        )
+        if repetido:
+            raise ValueError("el email ya esta registrado")
+
+    for campo in ("nombre", "apellido", "email"):
+        if campo in cambios:
+            setattr(usuario, campo, cambios[campo])
     db.add(usuario)
     db.commit()
     db.refresh(usuario)
