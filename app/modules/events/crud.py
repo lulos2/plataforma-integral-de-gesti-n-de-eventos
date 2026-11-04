@@ -89,6 +89,7 @@ def _crear_audit(
     # No hace commit: la auditoria se guarda en la misma transaccion que el cambio que registra.
     # Si la operacion no es sobre un evento (inicializar la numeracion), va con su area en numeracion_area.
     actor = _obtener_actor(db, actor_usuario_id)
+    momento = datetime.now(ARGENTINA_TZ)
     db.add(
         EventoAudit(
             evento_id=evento_id,
@@ -96,7 +97,8 @@ def _crear_audit(
             actor_usuario_id=actor_usuario_id,
             actor_area=actor.area,
             # Turno del momento de la operacion (segun los horarios), no el del perfil del usuario.
-            actor_turno=turno_en(datetime.now(ARGENTINA_TZ), actor.area),
+            actor_turno=turno_en(momento, actor.area),
+            fecha=momento,
             accion=accion,
             detalle=_a_json(detalle),
         )

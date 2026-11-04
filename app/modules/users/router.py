@@ -173,6 +173,8 @@ def actualizar_datos_usuario(
 ):
     # Nombre, apellido y correo. El administrador de area solo puede en operadores de su area.
     _usuario_administrable(db, actor, usuario_id)
+    if "area" in data.model_fields_set and not es_admin_dios(actor) and not es_supervisor(actor):
+        raise HTTPException(status_code=403, detail="Solo Supervisor o adminDios pueden asignar areas")
     try:
         return crud.actualizar_datos_usuario(
             db, usuario_id=usuario_id, cambios=data.model_dump(exclude_unset=True)

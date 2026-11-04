@@ -3,7 +3,7 @@ from datetime import UTC, datetime, timedelta
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
-from app.core.areas import ROLES_CON_AREA
+from app.core.areas import AREAS_VALIDAS, ROLES_CON_AREA
 from app.core.config import get_settings
 from app.core.security import (
     generate_reset_token,
@@ -13,7 +13,7 @@ from app.core.security import (
 )
 from app.modules.users.models import PasswordResetToken, Permission, Rol, Usuario
 from app.modules.users.registry import SYSTEM_ROLES
-from app.modules.users.schemas import RolCreate, UsuarioCreate
+from app.modules.users.schemas import RolCreate, UsuarioCreate, _nombre_completo
 
 
 def crear_rol(db: Session, data: RolCreate) -> Rol:
@@ -30,10 +30,10 @@ def listar_permisos(db: Session) -> list[Permission]:
 
 def _exigir_cuenta_completa(*, nombre: str | None, apellido: str | None, area: str | None) -> None:
     """Un administrador de area u operador necesita nombre y apellido completos y un area asignada."""
-    if not (nombre or "").strip() or not (apellido or "").strip():
-        raise ValueError("el administrador de area y el operador deben tener nombre y apellido")
-    if not area:
-        raise ValueError("el administrador de area y el operador deben tener un area asignada")
+    _nombre_completo(nombre)
+    _nombre_completo(apellido)
+    if area not in AREAS_VALIDAS:
+        raise ValueError("el administrador de area y el operador deben tener un area valida asignada")
 
 
 def _validar_roles_asignables(roles: list[Rol]) -> None:
@@ -105,6 +105,9 @@ def actualizar_activo_usuario(db: Session, *, usuario_id: int, activo: bool) -> 
     role_names = {r.nombre for r in (getattr(usuario, "roles", None) or [])}
     if not activo and "adminDios" in role_names:
         raise ValueError("no se puede desactivar un usuario con rol adminDios")
+
+    if activo and role_names.intersection(ROLES_CON_AREA):
+        _exigir_cuenta_completa(nombre=usuario.nombre, apellido=usuario.apellido, area=usuario.area)
 
     if usuario.activo == activo:
         return usuario
@@ -184,8 +187,8 @@ def actualizar_area_usuario(db: Session, *, usuario_id: int, area: str | None) -
     if not usuario:
         return None
 
-    if area is None and any(r.nombre in ROLES_CON_AREA for r in usuario.roles):
-        raise ValueError("el administrador de area y el operador no pueden quedar sin area")
+    if any(r.nombre in ROLES_CON_AREA for r in usuario.roles):
+        _exigir_cuenta_completa(nombre=usuario.nombre, apellido=usuario.apellido, area=area)
 
     usuario.area = area
     db.add(usuario)
@@ -195,10 +198,17 @@ def actualizar_area_usuario(db: Session, *, usuario_id: int, area: str | None) -
 
 
 def actualizar_datos_usuario(db: Session, *, usuario_id: int, cambios: dict) -> Usuario | None:
-    """Edita nombre, apellido y/o email (solo las claves que vienen en cambios)."""
+    """Edita datos personales y area autorizada, validando el estado resultante antes de escribir."""
     usuario = db.query(Usuario).filter(Usuario.id == usuario_id).first()
     if not usuario:
         return None
+
+    if any(r.nombre in ROLES_CON_AREA for r in usuario.roles):
+        _exigir_cuenta_completa(
+            nombre=cambios.get("nombre", usuario.nombre),
+            apellido=cambios.get("apellido", usuario.apellido),
+            area=cambios.get("area", usuario.area),
+        )
 
     email = cambios.get("email")
     if email is not None and email != (usuario.email or "").lower():
@@ -210,7 +220,7 @@ def actualizar_datos_usuario(db: Session, *, usuario_id: int, cambios: dict) -> 
         if repetido:
             raise ValueError("el email ya esta registrado")
 
-    for campo in ("nombre", "apellido", "email"):
+    for campo in ("nombre", "apellido", "email", "area"):
         if campo in cambios:
             setattr(usuario, campo, cambios[campo])
     db.add(usuario)

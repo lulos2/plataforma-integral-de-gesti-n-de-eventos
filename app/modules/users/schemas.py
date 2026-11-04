@@ -121,6 +121,12 @@ class UsuarioDatosUpdate(RequestModel):
     nombre: str | None = None
     apellido: str | None = None
     email: str | None = None
+    area: str | None = None
+
+    @field_validator("area")
+    @classmethod
+    def validar_area_usuario(cls, value: str | None) -> str | None:
+        return validar_area(value)
 
     @field_validator("nombre", "apellido")
     @classmethod
@@ -135,7 +141,7 @@ class UsuarioDatosUpdate(RequestModel):
     @model_validator(mode="after")
     def _al_menos_un_dato(self):
         if not self.model_fields_set:
-            raise ValueError("enviar al menos uno: nombre, apellido o email")
+            raise ValueError("enviar al menos uno: nombre, apellido, email o area")
         return self
 
 
