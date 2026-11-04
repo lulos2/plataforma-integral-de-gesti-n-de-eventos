@@ -10,6 +10,7 @@ from app.database.session import get_db
 from app.modules.users import crud as users_crud
 from app.modules.users.models import Usuario
 from app.modules.users.permissions import PermissionCode
+from app.modules.users.registry import SYSTEM_ROLES
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/token")
 ADMIN_DIOS_ROLE_NAME = "adminDios"
@@ -54,10 +55,16 @@ def _user_permission_codes(usuario: Usuario) -> set[str]:
         # adminDios bypass.
         return {"*"}
     roles = getattr(usuario, "roles", None) or []
+    # Incluso una cuenta legacy multirrol con supervisor queda en solo consulta de eventos.
+    if any(rol.nombre == "supervisor" for rol in roles):
+        return {code.value for code in SYSTEM_ROLES["supervisor"]}
     codes: set[str] = set()
     for rol in roles:
+        if rol.nombre not in SYSTEM_ROLES:
+            continue
         perms = getattr(rol, "permissions", None) or []
-        codes.update({p.code for p in perms if getattr(p, "code", None)})
+        allowed = {code.value for code in SYSTEM_ROLES[rol.nombre]}
+        codes.update(p.code for p in perms if getattr(p, "code", None) in allowed)
     return codes
 
 
@@ -115,21 +122,29 @@ def es_admin_dios(usuario: Usuario) -> bool:
     return _is_admin_dios(usuario)
 
 
+def es_supervisor(usuario: Usuario) -> bool:
+    return any(r.nombre == "supervisor" for r in usuario.roles)
+
+
 def verificar_gestion_usuario(actor: Usuario, objetivo: Usuario) -> None:
     """
     Corta con 403 si el actor no puede administrar la cuenta del objetivo.
 
-    adminDios administra cualquier cuenta. Un administrador de area solo administra operadores
-    de su propia area.
+    adminDios administra cualquier cuenta. Supervisor administra administradores de area.
+    Un administrador de area solo administra operadores de su propia area.
     """
     if _is_admin_dios(actor):
+        return
+    if es_supervisor(actor):
+        if {r.nombre for r in objetivo.roles} != {"admin"}:
+            raise HTTPException(status_code=403, detail="Solo puede administrar administradores de area")
         return
     if not actor.area or objetivo.area != actor.area:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Solo puede administrar usuarios de su area",
         )
-    if any(getattr(r, "nombre", None) != OPERADOR_ROLE_NAME for r in objetivo.roles):
+    if {r.nombre for r in objetivo.roles} != {OPERADOR_ROLE_NAME}:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Solo puede administrar cuentas de operadores",

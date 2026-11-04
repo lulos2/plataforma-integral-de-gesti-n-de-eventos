@@ -40,10 +40,11 @@ def login_for_access_token(
 
 @router.get("/me", response_model=UsuarioMeResponse)
 def me(usuario=Depends(get_current_user)):
-    roles = sorted(r.nombre for r in usuario.roles)
+    roles = {r.nombre for r in usuario.roles}
+    principal = next((r for r in ("adminDios", "supervisor", "admin", "operador") if r in roles), None)
     return UsuarioMeResponse.model_validate(usuario).model_copy(
         update={
-            "rol": roles[0] if roles else None,
+            "rol": principal,
             "permisos": permisos_efectivos(usuario),
             "areas_acceso": areas_accesibles(usuario),
         }

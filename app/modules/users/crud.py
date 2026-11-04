@@ -3,6 +3,7 @@ from datetime import UTC, datetime, timedelta
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
+from app.core.areas import ROLES_CON_AREA
 from app.core.config import get_settings
 from app.core.security import (
     generate_reset_token,
@@ -10,47 +11,17 @@ from app.core.security import (
     hash_reset_token,
     verify_password,
 )
-from app.core.areas import ROLES_CON_AREA
 from app.modules.users.models import PasswordResetToken, Permission, Rol, Usuario
-from app.modules.users.permissions import PermissionCode
+from app.modules.users.registry import SYSTEM_ROLES
 from app.modules.users.schemas import RolCreate, UsuarioCreate
 
 
 def crear_rol(db: Session, data: RolCreate) -> Rol:
-    reserved = {"adminDios", "superadmin", "admin", "operador", "supervisor", "auditor"}
-    if data.nombre in reserved:
-        raise ValueError(f"rol reservado: {data.nombre}")
-
-    unknown = sorted({p for p in data.permissions if p not in {c.value for c in PermissionCode}})
-    if unknown:
-        raise ValueError(f"permisos invalidos: {', '.join(unknown)}")
-    if data.permissions:
-        all_permission_codes = {row[0] for row in db.query(Permission.code).all()}
-        if all_permission_codes and set(data.permissions) == all_permission_codes:
-            raise ValueError("no se puede crear otro rol con todos los permisos")
-
-    rol = Rol(nombre=data.nombre)
-    if data.permissions:
-        permisos = (
-            db.query(Permission)
-            .filter(Permission.code.in_(data.permissions))
-            .all()
-        )
-        found = {p.code for p in permisos}
-        missing = sorted(set(data.permissions) - found)
-        if missing:
-            # Should not happen if seeding ran, but keep a clear error.
-            raise ValueError(f"permisos inexistentes en DB: {', '.join(missing)}")
-        rol.permissions = permisos
-
-    db.add(rol)
-    db.commit()
-    db.refresh(rol)
-    return rol
+    raise ValueError("el catalogo de roles es fijo: supervisor, admin, operador y adminDios")
 
 
 def listar_roles(db: Session) -> list[Rol]:
-    return db.query(Rol).order_by(Rol.nombre.asc()).all()
+    return db.query(Rol).filter(Rol.nombre.in_(SYSTEM_ROLES)).order_by(Rol.nombre.asc()).all()
 
 
 def listar_permisos(db: Session) -> list[Permission]:
@@ -65,12 +36,21 @@ def _exigir_cuenta_completa(*, nombre: str | None, apellido: str | None, area: s
         raise ValueError("el administrador de area y el operador deben tener un area asignada")
 
 
+def _validar_roles_asignables(roles: list[Rol]) -> None:
+    if not roles or any(r.nombre not in SYSTEM_ROLES for r in roles):
+        raise ValueError("solo se admiten los roles supervisor, admin, operador y adminDios")
+    if any(r.nombre == "supervisor" for r in roles) and len(roles) != 1:
+        raise ValueError("Supervisor no puede combinarse con otros roles")
+
+
 def crear_usuario(db: Session, data: UsuarioCreate) -> Usuario:
     roles = db.query(Rol).filter(Rol.id.in_(data.rol_ids)).all()
     found_ids = {r.id for r in roles}
     missing_ids = sorted(set(data.rol_ids) - found_ids)
     if missing_ids:
         raise ValueError(f"rol_ids invalidos: {', '.join(map(str, missing_ids))}")
+
+    _validar_roles_asignables(roles)
 
     selected_admin_dios = any(r.nombre == "adminDios" for r in roles)
     if selected_admin_dios:
@@ -148,8 +128,8 @@ def eliminar_rol(db: Session, *, rol_id: int) -> bool:
     rol = db.query(Rol).filter(Rol.id == rol_id).first()
     if not rol:
         return False
-    if rol.nombre == "adminDios":
-        raise ValueError("no se puede eliminar el rol adminDios")
+    if rol.nombre in SYSTEM_ROLES:
+        raise ValueError("no se puede eliminar un rol del sistema")
 
     has_users = db.query(Usuario.id).join(Usuario.roles).filter(Rol.id == rol.id).first()
     if has_users:
@@ -170,6 +150,8 @@ def actualizar_roles_usuario(db: Session, *, usuario_id: int, rol_ids: list[int]
     missing_ids = sorted(set(rol_ids) - found_ids)
     if missing_ids:
         raise ValueError(f"rol_ids invalidos: {', '.join(map(str, missing_ids))}")
+
+    _validar_roles_asignables(roles)
 
     current_has_admin_dios = any(r.nombre == "adminDios" for r in usuario.roles)
     target_has_admin_dios = any(r.nombre == "adminDios" for r in roles)

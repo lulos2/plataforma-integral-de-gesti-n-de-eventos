@@ -8,7 +8,6 @@ from app.core.security import get_password_hash
 from app.modules.users.models import Permission, Rol, Usuario
 from app.modules.users.permissions import PERMISSION_DESCRIPTIONS, PermissionCode
 
-
 ADMIN_DIOS_ROLE_NAME = "adminDios"
 
 
@@ -57,17 +56,14 @@ SYSTEM_ROLES: dict[str, tuple[PermissionCode, ...]] = {
         PermissionCode.EVENTOS_WRITE,
         PermissionCode.ESTADISTICAS_READ,
     ),
-    # Supervisor: consulta todas las areas, sin poder agregar ni modificar.
+    # Supervisor: administra administradores de area; eventos solo de consulta.
     "supervisor": (
+        PermissionCode.ROLES_READ,
+        PermissionCode.USERS_READ,
+        PermissionCode.USERS_WRITE,
         PermissionCode.EVENTOS_READ,
         PermissionCode.ESTADISTICAS_READ,
         PermissionCode.AREAS_ALL,
-    ),
-    "auditor": (
-        PermissionCode.ROLES_READ,
-        PermissionCode.USERS_READ,
-        PermissionCode.EVENTOS_READ,
-        PermissionCode.ESTADISTICAS_READ,
     ),
 }
 
@@ -206,6 +202,9 @@ def sync_system_roles(db: Session) -> None:
     """
     Create/update system roles to prevent "role name implies permissions" drift.
     """
+    # Conservar filas/asignaciones legacy para su revision, sin permisos efectivos.
+    for legacy in db.query(Rol).filter(Rol.nombre.notin_(SYSTEM_ROLES)).all():
+        legacy.permissions = []
     for role_name, perm_codes in SYSTEM_ROLES.items():
         role = db.query(Rol).filter(Rol.nombre == role_name).first()
         perms = db.query(Permission).filter(Permission.code.in_([p.value for p in perm_codes])).all()

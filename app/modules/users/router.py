@@ -3,6 +3,7 @@ from sqlalchemy.orm import Session
 
 from app.core.deps import (
     es_admin_dios,
+    es_supervisor,
     require_admin_dios,
     require_permissions,
     resolver_area_consulta,
@@ -19,10 +20,9 @@ from app.modules.users.schemas import (
     UsuarioAreaUpdate,
     UsuarioCreate,
     UsuarioDatosUpdate,
-    UsuarioRolesUpdate,
     UsuarioResponse,
+    UsuarioRolesUpdate,
 )
-
 
 router = APIRouter(prefix="/usuarios", tags=["Usuarios"])
 
@@ -76,7 +76,11 @@ def crear_usuario(
     db: Session = Depends(get_db),
     actor=Depends(require_permissions("users:write")),
 ):
-    if not es_admin_dios(actor):
+    if es_supervisor(actor) and not es_admin_dios(actor):
+        roles = crud.obtener_roles_por_ids(db, data.rol_ids)
+        if {r.nombre for r in roles} != {"admin"}:
+            raise HTTPException(status_code=403, detail="Solo puede crear administradores de area")
+    elif not es_admin_dios(actor):
         # El administrador de area solo crea operadores y siempre dentro de su propia area.
         if not actor.area:
             raise HTTPException(status_code=403, detail="El usuario no tiene un area asignada")
@@ -137,8 +141,12 @@ def actualizar_area_usuario(
     usuario_id: int,
     data: UsuarioAreaUpdate,
     db: Session = Depends(get_db),
-    _actor=Depends(require_admin_dios),
+    actor=Depends(require_permissions("users:write")),
 ):
+    if not es_admin_dios(actor):
+        if not es_supervisor(actor):
+            raise HTTPException(status_code=403, detail="Requiere Supervisor o adminDios")
+        _usuario_administrable(db, actor, usuario_id)
     try:
         usuario = crud.actualizar_area_usuario(db, usuario_id=usuario_id, area=data.area)
     except ValueError as e:
