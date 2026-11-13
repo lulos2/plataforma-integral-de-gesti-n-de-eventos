@@ -114,7 +114,8 @@ class TipoEvento(Base):
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     area = Column(String, nullable=False, index=True)
-    nombre = Column(String, nullable=False, index=True)
+    nombre = Column(String, nullable=False, index=True)  # identificador interno (va en las URLs)
+    etiqueta = Column(String, nullable=True)  # nombre para mostrar en pantalla (con tildes y espacios)
 
     __table_args__ = (
         UniqueConstraint("area", "nombre", name="uq_tipos_evento_area_nombre"),

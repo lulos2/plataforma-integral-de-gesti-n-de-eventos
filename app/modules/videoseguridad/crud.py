@@ -18,7 +18,7 @@ def _resolve_servicio_actuante_id(
     *,
     servicio_actuante_id: int | None,
     servicio_actuante: str | None,
-) -> int:
+) -> int | None:
     if servicio_actuante_id is not None and servicio_actuante is not None and servicio_actuante.strip() != "":
         raise ValueError("enviar solo uno: servicio_actuante_id o servicio_actuante")
 
@@ -39,12 +39,8 @@ def _resolve_servicio_actuante_id(
             raise ValueError(f"servicio_actuante invalido. Valores: {', '.join(allowed)}")
         raise ValueError("servicio_actuante invalido")
 
-    # Si no se envía servicio, usamos el default "indefinido".
-    default_svc = db.query(ServicioActuante).filter(func.lower(ServicioActuante.nombre) == "indefinido").first()
-    if default_svc:
-        return default_svc.id
-
-    raise ValueError("falta configurar servicio_actuante 'indefinido'")
+    # El servicio actuante es opcional: sin dato queda vacio (sin informar).
+    return None
 
 
 def _resolve_camara_id(db: Session, *, camara_id: int | None, camara: str | None) -> int | None:
@@ -144,7 +140,8 @@ def actualizar_evento_videoseguridad(
 
     detalle: dict = {}
 
-    if data.servicio_actuante_id is not None or (data.servicio_actuante or "").strip() != "":
+    # Si el campo viene en el pedido (aunque sea null o vacio) se aplica: null/vacio lo quita.
+    if "servicio_actuante_id" in data.model_fields_set or "servicio_actuante" in data.model_fields_set:
         nuevo_servicio_id = _resolve_servicio_actuante_id(
             db,
             servicio_actuante_id=data.servicio_actuante_id,

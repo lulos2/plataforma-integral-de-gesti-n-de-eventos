@@ -9,10 +9,19 @@ TURNOS_VALIDOS: tuple[str, ...] = ("matutino", "vespertino", "nocturno")
 
 
 # Horarios de cada turno, por area ("*" = valen para todas las areas que no tengan los suyos).
-# Formato: {"*": (("matutino", time(6), time(14)), ("vespertino", time(14), time(22)), ("nocturno", time(22), time(6)))}
-# Un turno puede cruzar la medianoche (desde > hasta). Hasta que el municipio confirme los horarios queda
-# vacio, y en ese caso el turno de la auditoria queda en null (no se inventa).
-HORARIOS_TURNOS: dict[str, tuple[tuple[str, time, time], ...]] = {}
+# Formato: {"area": (("matutino", time(6), time(14)), ...)}
+# Un turno puede cruzar la medianoche (desde > hasta).
+# Una area sin horarios definidos (y sin "*") no tiene turno: queda en null, no se inventa.
+HORARIOS_TURNOS: dict[str, tuple[tuple[str, time, time], ...]] = {
+    # Centro de Monitoreo (COM): funciona las 24 horas todos los dias, en tres turnos de 8 horas
+    # (confirmado por el municipio): 6 a 14, 14 a 22 y 22 a 6.
+    # Zoonosis y Bromatologia no tienen turnos definidos: sin horarios cargados, su turno queda en null.
+    "videoseguridad": (
+        ("matutino", time(6), time(14)),
+        ("vespertino", time(14), time(22)),
+        ("nocturno", time(22), time(6)),
+    ),
+}
 
 
 def turno_en(momento: datetime, area: str | None = None) -> str | None:

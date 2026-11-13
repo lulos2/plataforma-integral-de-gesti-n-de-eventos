@@ -83,7 +83,8 @@ class EventoVideoseguridad(Base):
         ForeignKey("eventos.id", ondelete="CASCADE"),
         primary_key=True,
     )
-    servicio_actuante_id = Column(Integer, ForeignKey("servicios_actuantes.id"), nullable=False, index=True)
+    # Opcional: puede quedar sin informar (NULL).
+    servicio_actuante_id = Column(Integer, ForeignKey("servicios_actuantes.id"), nullable=True, index=True)
 
     # Opcional: una camara asociada (si el evento proviene de una o se vincula a una)
     camara_id = Column(Integer, ForeignKey("camaras.id"), nullable=True, index=True)

@@ -6,6 +6,8 @@ from app.modules.auth.router import router as auth_router
 from app.modules.bromatologia.router import router as bromatologia_router
 from app.modules.dashboard.router import router as dashboard_router
 from app.modules.events.router import router as eventos_router
+from app.modules.events.router import servicios_router
+from app.modules.geocodificacion.router import router as geocodificacion_router
 from app.modules.numeracion.router import router as numeracion_router
 from app.modules.poligonos.router import router as poligonos_router
 from app.modules.users.router import router as usuarios_router
@@ -17,8 +19,10 @@ api_router = APIRouter()
 api_router.include_router(auth_router)
 api_router.include_router(usuarios_router)
 api_router.include_router(eventos_router)
+api_router.include_router(servicios_router)
 api_router.include_router(dashboard_router)
 api_router.include_router(numeracion_router)
+api_router.include_router(geocodificacion_router)
 api_router.include_router(poligonos_router)
 api_router.include_router(videoseguridad_router)
 api_router.include_router(zoonosis_router)
