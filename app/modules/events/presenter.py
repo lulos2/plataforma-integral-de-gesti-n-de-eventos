@@ -1,3 +1,4 @@
+from app.core.turnos import turno_en
 from app.modules.events.schemas import (
     AnulacionResponse,
     AuditResponse,
@@ -92,6 +93,19 @@ def to_evento_response(evento) -> EventoResponse:
 
 
 
+def _turno_de_operacion(registro) -> str | None:
+    """Turno en que se hizo una operacion del historial.
+
+    Las operaciones nuevas guardan su turno. Las anteriores a la carga de horarios lo tienen vacio:
+    en ese caso se calcula con la fecha y hora en que se hizo cada operacion y el area de quien la hizo.
+    """
+    if registro.actor_turno:
+        return registro.actor_turno
+    if registro.fecha is None:
+        return None
+    return turno_en(registro.fecha, registro.actor_area)
+
+
 def to_audit_response(registro) -> AuditResponse:
     actor = registro.actor_usuario
     return AuditResponse(
@@ -103,7 +117,7 @@ def to_audit_response(registro) -> AuditResponse:
         usuario_nombre=actor.nombre if actor else None,
         usuario_apellido=actor.apellido if actor else None,
         area=registro.actor_area,
-        turno=registro.actor_turno,
+        turno=_turno_de_operacion(registro),
         fecha=registro.fecha,
         detalle=registro.detalle,
     )
