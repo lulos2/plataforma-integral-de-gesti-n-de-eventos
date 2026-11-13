@@ -174,6 +174,18 @@ async def lifespan(_: FastAPI):
                 )
             )
 
+            # Tipos de evento de Zoonosis: los dos que ya no existen se eliminan si nadie los uso
+            # (el control antirrabico pasa a ser un campo del evento; los vectores se detallan en tipos propios).
+            conn.execute(
+                text(
+                    """
+                    DELETE FROM tipos_evento t
+                    WHERE t.area = 'zoonosis' AND t.nombre IN ('control_antirrabico', 'control_vectores')
+                      AND NOT EXISTS (SELECT 1 FROM eventos e WHERE e.tipo_evento_id = t.id)
+                    """
+                )
+            )
+
             # Servicio actuante opcional: "indefinido" pasa a vacio (NULL) y deja de existir como servicio.
             conn.execute(text("ALTER TABLE eventos_videoseguridad ALTER COLUMN servicio_actuante_id DROP NOT NULL"))
             conn.execute(

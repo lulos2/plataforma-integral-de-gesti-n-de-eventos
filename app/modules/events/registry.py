@@ -30,10 +30,14 @@ ALLOWED_TIPOS_EVENTO: tuple[TipoEventoDef, ...] = (
     TipoEventoDef(area="videoseguridad", nombre="cables_caidos", etiqueta="Cables caídos"),
 
     # Zoonosis
-    TipoEventoDef(area="zoonosis", nombre="mordedura", etiqueta="Mordedura"),
-    TipoEventoDef(area="zoonosis", nombre="canino_suelto", etiqueta="Canino suelto"),
-    TipoEventoDef(area="zoonosis", nombre="control_antirrabico", etiqueta="Control antirrábico"),
-    TipoEventoDef(area="zoonosis", nombre="control_vectores", etiqueta="Control de vectores"),
+    # Lo que registra el area (informado por la direccion de Zoonosis). El control antirrabico no es un
+    # tipo: se indica en el campo requiere_control_antirrabico del evento.
+    TipoEventoDef(area="zoonosis", nombre="mordedura", etiqueta="Mordedura de perro o gato"),
+    TipoEventoDef(area="zoonosis", nombre="canino_suelto", etiqueta="Perros sueltos"),
+    TipoEventoDef(area="zoonosis", nombre="mosquitos_aedes", etiqueta="Mosquitos Aedes"),
+    TipoEventoDef(area="zoonosis", nombre="roedores", etiqueta="Roedores en lugares públicos"),
+    TipoEventoDef(area="zoonosis", nombre="murcielagos", etiqueta="Murciélagos"),
+    TipoEventoDef(area="zoonosis", nombre="animales_ponzonosos", etiqueta="Animales ponzoñosos"),
 
     # Bromatologia
     TipoEventoDef(area="bromatologia", nombre="inspeccion", etiqueta="Inspección"),
