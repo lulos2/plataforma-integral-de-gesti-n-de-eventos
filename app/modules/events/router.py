@@ -18,6 +18,7 @@ from .schemas import (
     EventoCreate,
     IntervencionCreate,
     IntervencionResponse,
+    ServicioActuanteResponse,
     TipoEventoResponse,
 )
 
@@ -26,6 +27,17 @@ router = APIRouter(
     prefix="/eventos",
     tags=["Eventos"]
 )
+
+servicios_router = APIRouter(prefix="/servicios-actuantes", tags=["Servicios actuantes"])
+
+
+@servicios_router.get("/", response_model=list[ServicioActuanteResponse])
+def listar_servicios_actuantes(
+    db: Session = Depends(get_db),
+    usuario=Depends(require_permissions("eventos:read")),
+):
+    """Servicios actuantes disponibles para el selector del formulario."""
+    return crud.listar_servicios_actuantes(db)
 
 
 def _evento_autorizado(db: Session, usuario: Usuario, evento_id: int):

@@ -461,6 +461,10 @@ def obtener_evento(db: Session, evento_id: int) -> Evento | None:
     )
 
 
+def listar_servicios_actuantes(db: Session) -> list[ServicioActuante]:
+    return db.query(ServicioActuante).order_by(ServicioActuante.nombre.asc()).all()
+
+
 def crear_intervencion(db: Session, *, evento_id: int, data, actor_usuario_id: int):
     evento = db.query(Evento).filter(Evento.id == evento_id).first()
     if not evento:

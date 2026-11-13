@@ -148,6 +148,53 @@ async def lifespan(_: FastAPI):
                 )
             )
 
+            # Tipos de evento de COM: nueva lista. Los tipos viejos se renombran en el lugar (conservan su id,
+            # asi los eventos ya cargados siguen asociados) y "denuncia" de COM se elimina si nadie la uso.
+            conn.execute(text("ALTER TABLE tipos_evento ADD COLUMN IF NOT EXISTS etiqueta VARCHAR"))
+            for viejo, nuevo in (("robo", "robo_hurto"), ("disturbio", "peleas_via_publica"), ("accidente", "transito")):
+                conn.execute(
+                    text(
+                        """
+                        UPDATE tipos_evento SET nombre = :nuevo
+                        WHERE area = 'videoseguridad' AND nombre = :viejo
+                          AND NOT EXISTS (
+                              SELECT 1 FROM tipos_evento t2 WHERE t2.area = 'videoseguridad' AND t2.nombre = :nuevo
+                          )
+                        """
+                    ),
+                    {"viejo": viejo, "nuevo": nuevo},
+                )
+            conn.execute(
+                text(
+                    """
+                    DELETE FROM tipos_evento t
+                    WHERE t.area = 'videoseguridad' AND t.nombre = 'denuncia'
+                      AND NOT EXISTS (SELECT 1 FROM eventos e WHERE e.tipo_evento_id = t.id)
+                    """
+                )
+            )
+
+            # Servicio actuante opcional: "indefinido" pasa a vacio (NULL) y deja de existir como servicio.
+            conn.execute(text("ALTER TABLE eventos_videoseguridad ALTER COLUMN servicio_actuante_id DROP NOT NULL"))
+            conn.execute(
+                text(
+                    """
+                    UPDATE eventos_videoseguridad SET servicio_actuante_id = NULL
+                    WHERE servicio_actuante_id IN (SELECT id FROM servicios_actuantes WHERE nombre = 'indefinido')
+                    """
+                )
+            )
+            conn.execute(
+                text(
+                    """
+                    DELETE FROM servicios_actuantes s
+                    WHERE s.nombre = 'indefinido'
+                      AND NOT EXISTS (SELECT 1 FROM eventos_videoseguridad v WHERE v.servicio_actuante_id = s.id)
+                      AND NOT EXISTS (SELECT 1 FROM eventos_intervenciones i WHERE i.servicio_actuante_id = s.id)
+                    """
+                )
+            )
+
             conn.execute(text("ALTER TABLE eventos_zoonosis ADD COLUMN IF NOT EXISTS propietario VARCHAR"))
             conn.execute(text("ALTER TABLE eventos_intervenciones ADD COLUMN IF NOT EXISTS resultado TEXT"))
 

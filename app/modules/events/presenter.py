@@ -52,6 +52,7 @@ def to_evento_response(evento) -> EventoResponse:
         id=evento.id,
         area=tipo.area if tipo else "",
         tipo_evento=tipo.nombre if tipo else "",
+        tipo_evento_etiqueta=(tipo.etiqueta or tipo.nombre) if tipo else None,
         tipo_evento_id=evento.tipo_evento_id,
         descripcion=evento.descripcion,
         fuente=evento.fuente,

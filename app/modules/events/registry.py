@@ -10,7 +10,8 @@ from app.modules.events.models_domain import ServicioActuante
 @dataclass(frozen=True)
 class TipoEventoDef:
     area: str
-    nombre: str
+    nombre: str  # identificador interno, sin tildes ni espacios (va en las URLs)
+    etiqueta: str  # como se muestra en pantalla
 
 
 # IMPORTANT:
@@ -18,42 +19,40 @@ class TipoEventoDef:
 # domain models you actually implement (tables/logic). The API must not accept
 # arbitrary new types that have no backing model/meaning.
 ALLOWED_TIPOS_EVENTO: tuple[TipoEventoDef, ...] = (
-    # Videoseguridad
-    TipoEventoDef(area="videoseguridad", nombre="robo"),
-    TipoEventoDef(area="videoseguridad", nombre="disturbio"),
-    TipoEventoDef(area="videoseguridad", nombre="accidente"),
-    TipoEventoDef(area="videoseguridad", nombre="incendio"),
-    TipoEventoDef(area="videoseguridad", nombre="denuncia"),
+    # Videoseguridad (Centro de Monitoreo): motivos de llamado
+    TipoEventoDef(area="videoseguridad", nombre="persona_sospechosa", etiqueta="Persona sospechosa"),
+    TipoEventoDef(area="videoseguridad", nombre="robo_hurto", etiqueta="Robo o hurto"),
+    TipoEventoDef(area="videoseguridad", nombre="peleas_via_publica", etiqueta="Peleas en vía pública"),
+    TipoEventoDef(area="videoseguridad", nombre="ruidos_molestos", etiqueta="Ruidos molestos"),
+    TipoEventoDef(area="videoseguridad", nombre="transito", etiqueta="Tránsito"),
+    TipoEventoDef(area="videoseguridad", nombre="incendio", etiqueta="Incendio"),
+    TipoEventoDef(area="videoseguridad", nombre="animales_sueltos", etiqueta="Animales sueltos"),
+    TipoEventoDef(area="videoseguridad", nombre="cables_caidos", etiqueta="Cables caídos"),
 
     # Zoonosis
-    TipoEventoDef(area="zoonosis", nombre="mordedura"),
-    TipoEventoDef(area="zoonosis", nombre="canino_suelto"),
-    TipoEventoDef(area="zoonosis", nombre="control_antirrabico"),
-    TipoEventoDef(area="zoonosis", nombre="control_vectores"),
+    TipoEventoDef(area="zoonosis", nombre="mordedura", etiqueta="Mordedura"),
+    TipoEventoDef(area="zoonosis", nombre="canino_suelto", etiqueta="Canino suelto"),
+    TipoEventoDef(area="zoonosis", nombre="control_antirrabico", etiqueta="Control antirrábico"),
+    TipoEventoDef(area="zoonosis", nombre="control_vectores", etiqueta="Control de vectores"),
 
     # Bromatologia
-    TipoEventoDef(area="bromatologia", nombre="inspeccion"),
-    TipoEventoDef(area="bromatologia", nombre="acta"),
-    TipoEventoDef(area="bromatologia", nombre="denuncia"),
+    TipoEventoDef(area="bromatologia", nombre="inspeccion", etiqueta="Inspección"),
+    TipoEventoDef(area="bromatologia", nombre="acta", etiqueta="Acta"),
+    TipoEventoDef(area="bromatologia", nombre="denuncia", etiqueta="Denuncia"),
 )
 
 
 def sync_tipos_evento(db: Session) -> None:
-    """Ensure DB contains exactly the allowed TipoEvento rows (adds missing; doesn't delete)."""
-    existentes = {
-        (t.area, t.nombre)
-        for t in db.query(TipoEvento.area, TipoEvento.nombre).all()
-    }
+    """Ensure DB contains the allowed TipoEvento rows: adds missing ones and refreshes their etiqueta."""
+    existentes = {(t.area, t.nombre): t for t in db.query(TipoEvento).all()}
 
-    nuevos = [
-        TipoEvento(area=defn.area, nombre=defn.nombre)
-        for defn in ALLOWED_TIPOS_EVENTO
-        if (defn.area, defn.nombre) not in existentes
-    ]
-
-    if nuevos:
-        db.add_all(nuevos)
-        db.commit()
+    for defn in ALLOWED_TIPOS_EVENTO:
+        fila = existentes.get((defn.area, defn.nombre))
+        if fila is None:
+            db.add(TipoEvento(area=defn.area, nombre=defn.nombre, etiqueta=defn.etiqueta))
+        elif fila.etiqueta != defn.etiqueta:
+            fila.etiqueta = defn.etiqueta
+    db.commit()
 
 
 def sync_numeracion_areas(db: Session) -> None:
@@ -67,7 +66,7 @@ def sync_numeracion_areas(db: Session) -> None:
 
 def sync_servicios_actuantes(db: Session) -> None:
     """Seed servicios actuantes (for filtering and interventions)."""
-    allowed = ("policia", "transito", "bomberos", "same","indefinido")
+    allowed = ("policia", "transito", "bomberos", "same")
     existentes = {row[0] for row in db.query(ServicioActuante.nombre).all()}
     nuevos = [ServicioActuante(nombre=n) for n in allowed if n not in existentes]
     if nuevos:

@@ -54,6 +54,12 @@ class TipoEventoBase(RequestModel):
 
 class TipoEventoResponse(TipoEventoBase, ResponseModel):
     id: int
+    etiqueta: str | None = None  # nombre para mostrar (ej. "Robo o hurto")
+
+
+class ServicioActuanteResponse(ResponseModel):
+    id: int
+    nombre: str
 
 
 MODALIDADES_VALIDAS = {"nuevo", "historico"}
@@ -367,6 +373,7 @@ class EventoResponse(ResponseModel):
     id: int
     area: str
     tipo_evento: str
+    tipo_evento_etiqueta: str | None = None  # nombre para mostrar del tipo
     tipo_evento_id: int
 
     descripcion: str | None = None
