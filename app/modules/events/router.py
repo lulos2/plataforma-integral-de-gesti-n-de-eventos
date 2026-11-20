@@ -4,7 +4,13 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
 from app.database.session import get_db
-from app.core.deps import require_permissions, resolver_area_consulta, verificar_acceso_area
+from app.core.deps import (
+    puede_ver_anulados,
+    require_permissions,
+    resolver_area_consulta,
+    verificar_acceso_area,
+    verificar_visibilidad_evento,
+)
 from app.modules.events import crud
 from app.modules.events.presenter import to_audit_response, to_evento_response
 from app.modules.users.models import Usuario
@@ -41,11 +47,12 @@ def listar_servicios_actuantes(
 
 
 def _evento_autorizado(db: Session, usuario: Usuario, evento_id: int):
-    """Trae el evento: 404 si no existe, 403 si es de un area a la que el usuario no accede."""
+    """Trae el evento: 404 si no existe (o esta anulado y el usuario no puede verlo), 403 si es de un area a la que no accede."""
     evento = crud.obtener_evento(db, evento_id)
     if not evento:
         raise HTTPException(status_code=404, detail="Evento no encontrado")
     verificar_acceso_area(usuario, evento.tipo_evento.area)
+    verificar_visibilidad_evento(usuario, evento)
     return evento
 
 
@@ -81,6 +88,7 @@ def listar_eventos(
         direccion=direccion,
         especie=especie,
         buscar=buscar,
+        incluir_anulados=puede_ver_anulados(usuario),
     )
     return [to_evento_response(e) for e in eventos]
 
@@ -96,15 +104,25 @@ def crear_evento(
     verificar_acceso_area(usuario, tipo.area)
 
     try:
+        # El servicio se valida antes de crear nada (y antes de tomar un numero de evento).
+        servicio_id = crud.servicio_para_area(
+            db,
+            area=tipo.area,
+            servicio_actuante_id=data.servicio_actuante_id,
+            servicio_actuante=data.servicio_actuante,
+        )
         evento, _ = crud.crear_evento_base(
             db,
             tipo_evento_id=data.tipo_evento_id,
             data=data,
             actor_usuario_id=usuario.id,
         )
+        if tipo.area == "videoseguridad":
+            crud.registrar_detalle_videoseguridad(db, evento, servicio_id)
         db.commit()
         db.refresh(evento)
     except ValueError as e:
+        db.rollback()
         raise HTTPException(status_code=400, detail=str(e))
 
     return to_evento_response(crud.obtener_evento(db, evento.id))
@@ -141,6 +159,7 @@ def puntos_mapa(
         turno=turno,
         fecha_desde=fecha_desde,
         fecha_hasta=fecha_hasta,
+        incluir_anulados=puede_ver_anulados(usuario),
     )
 
 

@@ -242,7 +242,9 @@ class EventoCommonCreate(CargaMixin):
 
 
 class EventoCreate(EventoBase):
-    servicio_actuante_id: int | None = None  # requerido para videoseguridad
+    # Solo para eventos de videoseguridad y opcional: se puede enviar el id o el nombre (no ambos).
+    servicio_actuante_id: int | None = None
+    servicio_actuante: str | None = None
 
 
 class IntervencionCreate(RequestModel):
@@ -282,6 +284,9 @@ class EventoUpdate(RequestModel):
     recibio_nombre: str | None = None
     recibio_funcion: str | None = None
     observaciones_cierre: str | None = None
+    # Servicio actuante (solo videoseguridad). Si se envia, null o vacio lo quita; si se omite, no se toca.
+    servicio_actuante_id: int | None = None
+    servicio_actuante: str | None = None
     # actor (auditoría real) se toma del usuario autenticado
 
     @field_validator("fecha_ocurrencia")

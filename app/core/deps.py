@@ -76,6 +76,18 @@ def permisos_efectivos(usuario: Usuario) -> list[str]:
     return sorted(codes)
 
 
+def puede_ver_anulados(usuario: Usuario) -> bool:
+    """Solo quien tiene eventos:ver_anulados (adminDios y administradores de area) consulta eventos anulados."""
+    codes = _user_permission_codes(usuario)
+    return "*" in codes or PermissionCode.EVENTOS_VER_ANULADOS.value in codes
+
+
+def verificar_visibilidad_evento(usuario: Usuario, evento) -> None:
+    """Un evento anulado no existe para quien no puede verlos: 404, igual que si el id no existiera."""
+    if evento.estado == "anulado" and not puede_ver_anulados(usuario):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Evento no encontrado")
+
+
 def areas_accesibles(usuario: Usuario) -> list[str]:
     """Areas cuyos datos puede ver: todas, solo la suya o ninguna si no tiene area asignada."""
     if tiene_acceso_a_todas_las_areas(usuario):

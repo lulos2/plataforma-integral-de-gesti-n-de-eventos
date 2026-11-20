@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
-from app.core.deps import require_permissions, verificar_acceso_area
+from app.core.deps import require_permissions, verificar_acceso_area, verificar_visibilidad_evento
 from app.database.session import get_db
 from app.modules.events import crud as events_crud
 from app.modules.events.presenter import to_evento_response
@@ -41,6 +41,7 @@ def actualizar_evento_zoonosis(
     existente = events_crud.obtener_evento(db, evento_id)
     if existente:
         verificar_acceso_area(usuario, existente.tipo_evento.area)
+        verificar_visibilidad_evento(usuario, existente)
         events_crud.verificar_no_anulado(existente)
 
     try:

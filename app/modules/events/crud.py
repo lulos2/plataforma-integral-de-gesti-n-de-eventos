@@ -272,6 +272,7 @@ def obtener_eventos(
     direccion: str | None = None,
     especie: str | None = None,
     buscar: str | None = None,
+    incluir_anulados: bool = False,
 ):
 
     q = db.query(Evento).options(
@@ -291,6 +292,10 @@ def obtener_eventos(
         q = q.join(EventoVideoseguridad, EventoVideoseguridad.evento_id == Evento.id).filter(
             EventoVideoseguridad.servicio_actuante_id == servicio_actuante_id
         )
+
+    if not incluir_anulados:
+        # Sin permiso para ver anulados no se devuelven nunca, ni siquiera pidiendo estado=anulado.
+        q = q.filter(Evento.estado != "anulado")
 
     if estado:
         q = q.filter(Evento.estado == estado)
@@ -341,6 +346,7 @@ def obtener_puntos_mapa(
     turno: str | None = None,
     fecha_desde: datetime | None = None,
     fecha_hasta: datetime | None = None,
+    incluir_anulados: bool = False,
 ) -> list[dict]:
     # Consulta liviana (solo lo que necesita el mapa). La fecha de un evento es siempre su
     # fecha_ocurrencia (la de carga no la reemplaza).
@@ -367,6 +373,8 @@ def obtener_puntos_mapa(
         q = q.join(EventoVideoseguridad, EventoVideoseguridad.evento_id == Evento.id).filter(
             EventoVideoseguridad.servicio_actuante_id == servicio_actuante_id
         )
+    if not incluir_anulados:
+        q = q.filter(Evento.estado != "anulado")
     if estado:
         q = q.filter(Evento.estado == estado)
     else:
@@ -463,6 +471,70 @@ def obtener_evento(db: Session, evento_id: int) -> Evento | None:
 
 def listar_servicios_actuantes(db: Session) -> list[ServicioActuante]:
     return db.query(ServicioActuante).order_by(ServicioActuante.nombre.asc()).all()
+
+
+def resolver_servicio_actuante_id(
+    db: Session,
+    *,
+    servicio_actuante_id: int | None,
+    servicio_actuante: str | None,
+) -> int | None:
+    """Servicio actuante elegido, por id o por nombre. None si no se informa (el servicio es opcional)."""
+    nombre = (servicio_actuante or "").strip()
+    if servicio_actuante_id is not None and nombre != "":
+        raise ValueError("enviar solo uno: servicio_actuante_id o servicio_actuante")
+
+    if servicio_actuante_id is not None:
+        svc = db.query(ServicioActuante).filter(ServicioActuante.id == servicio_actuante_id).first()
+        if not svc:
+            raise ValueError("servicio_actuante_id invalido")
+        return svc.id
+
+    if nombre != "":
+        svc = db.query(ServicioActuante).filter(func.lower(ServicioActuante.nombre) == nombre.lower()).first()
+        if svc:
+            return svc.id
+        permitidos = [row[0] for row in db.query(ServicioActuante.nombre).order_by(ServicioActuante.nombre.asc()).all()]
+        if permitidos:
+            raise ValueError(f"servicio_actuante invalido. Valores: {', '.join(permitidos)}")
+        raise ValueError("servicio_actuante invalido")
+
+    return None
+
+
+def servicio_para_area(
+    db: Session,
+    *,
+    area: str,
+    servicio_actuante_id: int | None,
+    servicio_actuante: str | None,
+) -> int | None:
+    """Valida el servicio actuante segun el area del evento: solo aplica a videoseguridad."""
+    servicio_id = resolver_servicio_actuante_id(
+        db, servicio_actuante_id=servicio_actuante_id, servicio_actuante=servicio_actuante
+    )
+    if servicio_id is not None and area != "videoseguridad":
+        raise ValueError("el servicio actuante solo se puede indicar en eventos de videoseguridad")
+    return servicio_id
+
+
+def registrar_detalle_videoseguridad(db: Session, evento: Evento, servicio_actuante_id: int | None) -> None:
+    """Crea el detalle propio de videoseguridad de un evento recien creado (con su servicio, si lo hay)."""
+    db.add(EventoVideoseguridad(evento_id=evento.id, servicio_actuante_id=servicio_actuante_id))
+
+
+def _asignar_servicio_actuante(db: Session, evento: Evento, nuevo_id: int | None) -> dict | None:
+    """Asigna, cambia o quita el servicio de un evento de videoseguridad. Devuelve el cambio para la auditoria."""
+    detalle_vs = evento.videoseguridad
+    actual = detalle_vs.servicio_actuante_id if detalle_vs else None
+    if nuevo_id == actual:
+        return None
+    if detalle_vs is None:
+        # Evento cargado antes de que se guardara el detalle de videoseguridad: se crea ahora.
+        db.add(EventoVideoseguridad(evento_id=evento.id, servicio_actuante_id=nuevo_id))
+    else:
+        detalle_vs.servicio_actuante_id = nuevo_id
+    return {"from": actual, "to": nuevo_id}
 
 
 def crear_intervencion(db: Session, *, evento_id: int, data, actor_usuario_id: int):
@@ -569,6 +641,19 @@ def actualizar_evento(db: Session, evento_id: int, data, *, actor_usuario_id: in
             # del cierre original no cambian.
             detalle["observaciones_cierre"] = {"from": evento.observaciones_cierre, "to": observaciones_cierre}
             evento.observaciones_cierre = observaciones_cierre
+
+        # Servicio actuante: si el campo viene en el pedido se aplica; null o vacio lo quita.
+        if "servicio_actuante_id" in data.model_fields_set or "servicio_actuante" in data.model_fields_set:
+            nuevo_servicio_id = servicio_para_area(
+                db,
+                area=evento.area,
+                servicio_actuante_id=data.servicio_actuante_id,
+                servicio_actuante=data.servicio_actuante,
+            )
+            if evento.area == "videoseguridad":
+                cambio_servicio = _asignar_servicio_actuante(db, evento, nuevo_servicio_id)
+                if cambio_servicio:
+                    detalle["servicio_actuante_id"] = cambio_servicio
 
         if data.latitud is not None or data.longitud is not None:
             nueva_lat = evento.latitud if data.latitud is None else data.latitud
