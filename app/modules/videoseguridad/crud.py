@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy.sql import func
 
 from app.modules.events import crud as events_crud
-from app.modules.events.models_domain import EventoVideoseguridad, ServicioActuante, Camara
+from app.modules.events.models_domain import EventoVideoseguridad, Camara
 from app.modules.videoseguridad.schemas import EventoVideoseguridadCreate, EventoVideoseguridadUpdate
 
 
@@ -19,28 +19,10 @@ def _resolve_servicio_actuante_id(
     servicio_actuante_id: int | None,
     servicio_actuante: str | None,
 ) -> int | None:
-    if servicio_actuante_id is not None and servicio_actuante is not None and servicio_actuante.strip() != "":
-        raise ValueError("enviar solo uno: servicio_actuante_id o servicio_actuante")
-
-    if servicio_actuante_id is not None:
-        svc = db.query(ServicioActuante).filter(ServicioActuante.id == servicio_actuante_id).first()
-        if not svc:
-            raise ValueError("servicio_actuante_id invalido")
-        return svc.id
-
-    name = (servicio_actuante or "").strip()
-    if name != "":
-        svc = db.query(ServicioActuante).filter(func.lower(ServicioActuante.nombre) == name.lower()).first()
-        if svc:
-            return svc.id
-
-        allowed = [row[0] for row in db.query(ServicioActuante.nombre).order_by(ServicioActuante.nombre.asc()).all()]
-        if allowed:
-            raise ValueError(f"servicio_actuante invalido. Valores: {', '.join(allowed)}")
-        raise ValueError("servicio_actuante invalido")
-
-    # El servicio actuante es opcional: sin dato queda vacio (sin informar).
-    return None
+    # La validacion es la misma que usan las rutas genericas de eventos (vive en events/crud.py).
+    return events_crud.resolver_servicio_actuante_id(
+        db, servicio_actuante_id=servicio_actuante_id, servicio_actuante=servicio_actuante
+    )
 
 
 def _resolve_camara_id(db: Session, *, camara_id: int | None, camara: str | None) -> int | None:

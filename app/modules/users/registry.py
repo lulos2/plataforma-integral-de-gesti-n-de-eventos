@@ -47,6 +47,7 @@ SYSTEM_ROLES: dict[str, tuple[PermissionCode, ...]] = {
         PermissionCode.EVENTOS_WRITE,
         PermissionCode.EVENTOS_ANULAR,
         PermissionCode.EVENTOS_REABRIR,
+        PermissionCode.EVENTOS_VER_ANULADOS,
         PermissionCode.NUMERACION_CONFIGURAR,
         PermissionCode.ESTADISTICAS_READ,
     ),
