@@ -221,23 +221,46 @@ def _a_ubicacion(item: dict, *, pedida: tuple[str, int] | None = None, es_punto:
     )
 
 
+def _agrupar(ubicaciones: list[UbicacionResponse]) -> list[UbicacionResponse]:
+    """Una sola entrada por cada texto de direccion.
+
+    El mapa tiene las calles partidas en tramos: si no encuentra la altura, devuelve varios tramos que se
+    leen igual ("Avenida Belgrano, Rauch") y solo cambian las coordenadas. De cada grupo queda la verificada
+    si la hay y, si no, el tramo mas cercano al centro del grupo (un punto que esta sobre la calle).
+    El barrio y el nombre solo se informan si son iguales en todo el grupo."""
+    grupos: dict[str, list[UbicacionResponse]] = {}
+    for u in ubicaciones:
+        grupos.setdefault(u.direccion, []).append(u)
+
+    resultados: list[UbicacionResponse] = []
+    for grupo in grupos.values():
+        verificadas = [u for u in grupo if u.verificacion == "verificada"]
+        if verificadas:
+            resultados.append(verificadas[0])
+            continue
+        lat = sum(u.latitud for u in grupo) / len(grupo)
+        lon = sum(u.longitud for u in grupo) / len(grupo)
+        elegida = min(grupo, key=lambda u: (u.latitud - lat) ** 2 + (u.longitud - lon) ** 2)
+        comunes = {
+            campo: getattr(elegida, campo) if len({getattr(u, campo) for u in grupo}) == 1 else None
+            for campo in ("barrio", "nombre")
+        }
+        resultados.append(elegida.model_copy(update=comunes))
+    return resultados
+
+
 def _filtrar(datos, *, pedida: tuple[str, int] | None = None) -> list[UbicacionResponse]:
-    """Resultados de Nominatim -> ubicaciones de Rauch, sin repetidos, las verificadas primero."""
+    """Resultados de Nominatim -> ubicaciones de Rauch, sin textos repetidos, las verificadas primero."""
     if not isinstance(datos, list):
         raise GeocodificacionNoDisponible("respuesta inesperada del servicio de mapas", sin_conexion=False)
     resultados: list[UbicacionResponse] = []
-    vistos: set[tuple[str, float, float]] = set()
     for item in datos:
         if not isinstance(item, dict) or not _es_de_rauch(item.get("address") or {}):
             continue
         ubicacion = _a_ubicacion(item, pedida=pedida)
-        if ubicacion is None:
-            continue
-        marca = (ubicacion.direccion, round(ubicacion.latitud, 5), round(ubicacion.longitud, 5))
-        if marca in vistos:
-            continue
-        vistos.add(marca)
-        resultados.append(ubicacion)
+        if ubicacion is not None:
+            resultados.append(ubicacion)
+    resultados = _agrupar(resultados)
     resultados.sort(key=lambda u: u.verificacion != "verificada")  # estable: respeta el orden del proveedor
     return resultados[:MAX_RESULTADOS]
 
